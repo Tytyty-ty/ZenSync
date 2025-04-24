@@ -1,1 +1,50 @@
-# ZenSync
+### zen-sync-app
+
+# Приложение для совместного проведения времени - ZenSync
+
+## Описание (Description)
+
+Приложение для синхронной медитации с музыкой из Spotify и возможностью ставить цели и делать заметки. Позволяет пользователям медитировать вместе в реальном времени, создавая поддерживающую атмосферу.
+
+
+## Основные возможности (Key Features)
+
+*   Синхронная медитация в реальном времени
+*   Интеграция с Spotify API для выбора музыки
+*   Установка целей перед медитацией
+*   Запись заметок во время и после медитации
+*   Поддержка Android
+*   Создание и присоединение к комнатам медитации
+
+
+## Используемые технологии (Technology Stack)
+
+*   **Язык программирования:** Kotlin
+*   **Backend:**
+    *   Фреймворк: [Ktor](https://ktor.io/)
+    *   База данных: [PostgreSQL](https://www.postgresql.org/)
+    *   ORM: [Exposed](https://github.com/JetBrains/Exposed)
+    *   WebSockets: Ktor WebSockets
+    *   Spotify API: [Spotify Web API](https://developer.spotify.com/documentation/)
+*   **Frontend (Android):**
+    *   Jetpack Compose (Android)
+*   **Сборка и управление зависимостями:** Gradle Kotlin DSL
+*   **Контроль версий:** Git
+
+
+<div align="right" >
+
+<h2>Разработкой занимается:</h2>
+
+<h5>
+  
+Кормильцев Владислав, 
+
+cтудент Московского Политеха,
+
+Группа 241-331
+
+</h5>
+
+</div>
+
