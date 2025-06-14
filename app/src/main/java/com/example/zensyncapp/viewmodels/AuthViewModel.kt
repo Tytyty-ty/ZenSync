@@ -30,6 +30,15 @@ class AuthViewModel : ViewModel() {
         data class Error(val message: String) : AuthState()
     }
 
+    private fun configureHttpClient(token: String?, userId: String?) {
+        ApiClient.httpClient.config {
+            defaultRequest {
+                token?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                userId?.let { header("X-User-Id", it) }
+            }
+        }
+    }
+
     fun register(username: String, email: String, password: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
@@ -44,25 +53,12 @@ class AuthViewModel : ViewModel() {
                     setBody(RegisterRequest(username, email, password))
                 }
 
-                if (response.status == HttpStatusCode.Created) {
-                    val authResponse = response.body<AuthResponse>()
-                    _authState.value = AuthState.Success(authResponse)
-                    _currentUser.value = authResponse
-                    ApiClient.setAuthToken(authResponse.token)
-                    // Устанавливаем ID пользователя для последующих запросов
-                    ApiClient.httpClient.config {
-                        defaultRequest {
-                            header("X-User-Id", authResponse.userId)
-                        }
-                    }
-                }
-
                 when (response.status) {
                     HttpStatusCode.Created -> {
                         val authResponse = response.body<AuthResponse>()
                         _authState.value = AuthState.Success(authResponse)
                         _currentUser.value = authResponse
-                        ApiClient.setAuthToken(authResponse.token)
+                        configureHttpClient(authResponse.token, authResponse.userId)
                     }
                     else -> {
                         val errorText = response.bodyAsText()
@@ -92,24 +88,11 @@ class AuthViewModel : ViewModel() {
                         val authResponse = response.body<AuthResponse>()
                         _authState.value = AuthState.Success(authResponse)
                         _currentUser.value = authResponse
-                        ApiClient.setAuthToken(authResponse.token)
+                        configureHttpClient(authResponse.token, authResponse.userId)
                     }
                     else -> {
                         val errorText = response.bodyAsText()
                         _authState.value = AuthState.Error(errorText ?: "Ошибка входа")
-                    }
-                }
-
-                if (response.status == HttpStatusCode.OK) {
-                    val authResponse = response.body<AuthResponse>()
-                    _authState.value = AuthState.Success(authResponse)
-                    _currentUser.value = authResponse
-                    ApiClient.setAuthToken(authResponse.token)
-                    // Устанавливаем ID пользователя для последующих запросов
-                    ApiClient.httpClient.config {
-                        defaultRequest {
-                            header("X-User-Id", authResponse.userId)
-                        }
                     }
                 }
             } catch (e: ClientRequestException) {
@@ -124,6 +107,6 @@ class AuthViewModel : ViewModel() {
     fun logout() {
         _currentUser.value = null
         _authState.value = AuthState.Idle
-        ApiClient.clearAuthToken()
+        configureHttpClient(null, null)
     }
 }

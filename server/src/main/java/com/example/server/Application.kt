@@ -23,7 +23,6 @@ import java.time.Duration
 
 fun main() {
     embeddedServer(Netty, port = 8081, host = "0.0.0.0") {
-        // Установка плагина WebSockets
         install(WebSockets) {
             pingPeriod = Duration.ofSeconds(15)
             timeout = Duration.ofSeconds(15)
@@ -45,6 +44,7 @@ fun main() {
             allowMethod(HttpMethod.Delete)
             allowHeader(HttpHeaders.ContentType)
             allowHeader(HttpHeaders.Authorization)
+            allowHeader("X-User-Id")
         }
 
         install(ContentNegotiation) {

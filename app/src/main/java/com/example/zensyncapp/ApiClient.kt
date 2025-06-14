@@ -11,8 +11,9 @@ import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.json.Json
 
 object ApiClient {
-    private const val BASE_URL = "http://10.0.2.2:8081/" // Изменили порт на 8081
+    private const val BASE_URL = "http://10.0.2.2:8081/"
     private var authToken: String? = null
+    private var userId: String? = null
 
     val httpClient = HttpClient(CIO) {
         install(ContentNegotiation) {
@@ -32,17 +33,25 @@ object ApiClient {
         defaultRequest {
             url(BASE_URL)
             header(HttpHeaders.ContentType, ContentType.Application.Json)
-            authToken?.let {
-                header(HttpHeaders.Authorization, "Bearer $it")
-            }
+            authToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+            userId?.let { header("X-User-Id", it) }
         }
     }
 
     fun setAuthToken(token: String?) {
         authToken = token
     }
-    fun clearAuthToken() {
-        authToken = null
+
+    fun setUserId(id: String?) {
+        userId = id
     }
+
     fun getAuthToken(): String? = authToken
+
+    fun getUserId(): String? = userId
+
+    fun clearAuth() {
+        authToken = null
+        userId = null
+    }
 }

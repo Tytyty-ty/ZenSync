@@ -408,3 +408,49 @@ fun LiveMeditationScreen(
         )
     }
 }
+
+@Composable
+fun MeditationRoomListScreen(
+    navController: NavController,
+    viewModel: MeditationViewModel
+) {
+    val rooms by viewModel.rooms.collectAsState()
+    var searchQuery by remember { mutableStateOf("") }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            IconButton(onClick = { navController.popBackStack() }) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Поиск комнат") },
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                modifier = Modifier.weight(1f),
+                singleLine = true
+            )
+        }
+
+        LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
+            items(
+                rooms.filter { room ->
+                    room.name.contains(searchQuery, ignoreCase = true) ||
+                            room.creator.contains(searchQuery, ignoreCase = true) ||
+                            (room.goal?.contains(searchQuery, ignoreCase = true) ?: false)
+                }
+            ) { room ->
+                MeditationRoomCard(room = room) {
+                    navController.navigate("LiveMeditationSession/${room.id}")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+    }
+}
