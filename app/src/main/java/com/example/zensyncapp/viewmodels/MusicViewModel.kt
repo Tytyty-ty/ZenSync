@@ -14,6 +14,7 @@ import com.example.zensyncapp.models.SpotifyPlaylist
 import com.example.zensyncapp.spotify.SpotifyManager
 import io.ktor.client.call.body
 import io.ktor.client.request.*
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -110,7 +111,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                // TODO: Replace with actual Spotify API integration
                 _spotifyPlaylists.value = listOf(
                     SpotifyPlaylist(
                         id = "37i9dQZF1DXc5e2bJhV6pu",
@@ -150,12 +150,16 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
 
-                if (response.status == HttpStatusCode.Created) {
-                    val roomId = response.body<Map<String, String>>()["id"]
-                    roomId?.let {
-                        // После создания получаем полные данные комнаты
-                        fetchRoomDetails(it)
-                        joinMusicRoom(it)
+                when (response.status) {
+                    HttpStatusCode.Created -> {
+                        val room = response.body<MusicRoom>()
+                        _currentRoom.value = room
+                        joinMusicRoom(room.id)
+                        fetchRooms()
+                    }
+                    else -> {
+                        val errorText = response.bodyAsText()
+                        _error.value = errorText ?: "Failed to create room"
                     }
                 }
             } catch (e: Exception) {
@@ -165,7 +169,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-
 
     fun joinMusicRoom(roomId: String) {
         viewModelScope.launch {

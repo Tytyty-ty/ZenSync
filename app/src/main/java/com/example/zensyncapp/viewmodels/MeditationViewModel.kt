@@ -9,6 +9,7 @@ import com.example.zensyncapp.models.CreateMeditationRoomRequest
 import com.example.zensyncapp.WebSocketService
 import io.ktor.client.call.body
 import io.ktor.client.request.*
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,30 +44,6 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun joinRoom(roomId: String) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                val token = ApiClient.getAuthToken()
-                WebSocketService.startService(
-                    getApplication(),
-                    roomId,
-                    "meditation",
-                    token
-                )
-
-                val response = ApiClient.httpClient.post("/api/meditation/rooms/$roomId/join")
-                if (response.status == HttpStatusCode.OK) {
-                    _currentRoom.value = response.body()
-                }
-            } catch (e: Exception) {
-                _error.value = e.message
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
-
     fun createRoom(name: String, duration: Int, goal: String, isPublic: Boolean = true) {
         viewModelScope.launch {
             _isLoading.value = true
@@ -76,19 +53,54 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                     setBody(CreateMeditationRoomRequest(name, duration, goal, isPublic))
                 }
 
-                if (response.status == HttpStatusCode.Created) {
-                    val roomId = response.body<Map<String, String>>()["id"]
-                    roomId?.let {
-                        // После создания получаем полные данные комнаты
-                        val roomResponse = ApiClient.httpClient.get("/api/meditation/rooms/$it")
-                        if (roomResponse.status == HttpStatusCode.OK) {
-                            _currentRoom.value = roomResponse.body()
-                            joinRoom(it)
-                        }
+                when (response.status) {
+                    HttpStatusCode.Created -> {
+                        val room = response.body<MeditationRoom>()
+                        _currentRoom.value = room
+                        joinRoom(room.id)
+                        fetchRooms()
+                    }
+                    else -> {
+                        val errorText = response.bodyAsText()
+                        _error.value = errorText ?: "Ошибка создания комнаты"
                     }
                 }
             } catch (e: Exception) {
-                _error.value = e.message
+                _error.value = e.message ?: "Ошибка соединения"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun joinRoom(roomId: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val response = ApiClient.httpClient.post("/api/meditation/rooms/$roomId/join")
+
+                when (response.status) {
+                    HttpStatusCode.OK -> {
+                        val roomResponse = ApiClient.httpClient.get("/api/meditation/rooms/$roomId")
+                        if (roomResponse.status == HttpStatusCode.OK) {
+                            _currentRoom.value = roomResponse.body()
+                        }
+
+                        val token = ApiClient.getAuthToken()
+                        WebSocketService.startService(
+                            getApplication(),
+                            roomId,
+                            "meditation",
+                            token
+                        )
+                    }
+                    else -> {
+                        val errorText = response.bodyAsText()
+                        _error.value = errorText ?: "Ошибка входа в комнату"
+                    }
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Ошибка соединения"
             } finally {
                 _isLoading.value = false
             }

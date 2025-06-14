@@ -1,5 +1,6 @@
 package com.example.zensyncapp
 
+import android.annotation.SuppressLint
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -30,6 +31,7 @@ import com.example.zensyncapp.viewmodels.MeditationViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+@SuppressLint("StateFlowValueCalledInComposition")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateMeditationRoomScreen(
@@ -41,6 +43,16 @@ fun CreateMeditationRoomScreen(
     var roomName by remember { mutableStateOf("") }
     var isPublic by remember { mutableStateOf(true) }
     val context = LocalContext.current
+
+    LaunchedEffect(viewModel.currentRoom.value) {
+        viewModel.currentRoom.value?.let { room ->
+            navController.navigate("LiveMeditationSession/${room.id}") {
+                popUpTo("CreateMeditationRoom/${meditationGoal}") {
+                    inclusive = true
+                }
+            }
+        }
+    }
 
     Column(
         modifier = Modifier

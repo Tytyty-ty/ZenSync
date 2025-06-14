@@ -42,9 +42,9 @@ object MeditationRooms : IntIdTable() {
     val durationMinutes = integer("duration_minutes")
     val goal = text("goal").nullable()
     val isPublic = bool("is_public").default(true)
-    val startTime = timestamp("start_time").nullable()
-    val endTime = timestamp("end_time").nullable()
-    val createdAt = timestamp("created_at")
+    val startTime = datetime("start_time").nullable()
+    val endTime = datetime("end_time").nullable()
+    val createdAt = datetime("created_at")
 }
 
 object MusicRooms : IntIdTable() {
@@ -54,14 +54,14 @@ object MusicRooms : IntIdTable() {
     val spotifyPlaylistName = varchar("spotify_playlist_name", 100)
     val durationMinutes = integer("duration_minutes")
     val isPublic = bool("is_public").default(true)
-    val createdAt = timestamp("created_at")
+    val createdAt = datetime("created_at")
 }
 
 object RoomParticipants : Table() {
     val roomId = integer("room_id")
     val roomType = varchar("room_type", 10)
     val userId = integer("user_id").references(Users.id)
-    val joinedAt = timestamp("joined_at")
+    val joinedAt = datetime("joined_at")
     override val primaryKey = PrimaryKey(roomId, roomType, userId)
 }
 
@@ -70,5 +70,5 @@ object MeditationNotes : IntIdTable() {
     val roomId = integer("room_id").nullable()
     val goal = text("goal").nullable()
     val notes = text("notes")
-    val createdAt = timestamp("created_at")
+    val createdAt = datetime("created_at")
 }
