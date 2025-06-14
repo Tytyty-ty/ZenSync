@@ -152,7 +152,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
                 if (response.status == HttpStatusCode.Created) {
                     val roomId = response.body<Map<String, String>>()["id"]
-                    roomId?.let { joinMusicRoom(it) }
+                    roomId?.let {
+                        // После создания получаем полные данные комнаты
+                        fetchRoomDetails(it)
+                        joinMusicRoom(it)
+                    }
                 }
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to create room"
@@ -161,6 +165,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
 
     fun joinMusicRoom(roomId: String) {
         viewModelScope.launch {

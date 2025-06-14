@@ -78,7 +78,14 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
 
                 if (response.status == HttpStatusCode.Created) {
                     val roomId = response.body<Map<String, String>>()["id"]
-                    roomId?.let { joinRoom(it) }
+                    roomId?.let {
+                        // После создания получаем полные данные комнаты
+                        val roomResponse = ApiClient.httpClient.get("/api/meditation/rooms/$it")
+                        if (roomResponse.status == HttpStatusCode.OK) {
+                            _currentRoom.value = roomResponse.body()
+                            joinRoom(it)
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 _error.value = e.message

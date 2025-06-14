@@ -8,6 +8,7 @@ import com.example.zensyncapp.models.LoginRequest
 import com.example.zensyncapp.models.RegisterRequest
 import io.ktor.client.call.body
 import io.ktor.client.plugins.ClientRequestException
+import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
@@ -41,6 +42,19 @@ class AuthViewModel : ViewModel() {
                 val response = ApiClient.httpClient.post("/api/auth/register") {
                     contentType(ContentType.Application.Json)
                     setBody(RegisterRequest(username, email, password))
+                }
+
+                if (response.status == HttpStatusCode.Created) {
+                    val authResponse = response.body<AuthResponse>()
+                    _authState.value = AuthState.Success(authResponse)
+                    _currentUser.value = authResponse
+                    ApiClient.setAuthToken(authResponse.token)
+                    // Устанавливаем ID пользователя для последующих запросов
+                    ApiClient.httpClient.config {
+                        defaultRequest {
+                            header("X-User-Id", authResponse.userId)
+                        }
+                    }
                 }
 
                 when (response.status) {
@@ -83,6 +97,19 @@ class AuthViewModel : ViewModel() {
                     else -> {
                         val errorText = response.bodyAsText()
                         _authState.value = AuthState.Error(errorText ?: "Ошибка входа")
+                    }
+                }
+
+                if (response.status == HttpStatusCode.OK) {
+                    val authResponse = response.body<AuthResponse>()
+                    _authState.value = AuthState.Success(authResponse)
+                    _currentUser.value = authResponse
+                    ApiClient.setAuthToken(authResponse.token)
+                    // Устанавливаем ID пользователя для последующих запросов
+                    ApiClient.httpClient.config {
+                        defaultRequest {
+                            header("X-User-Id", authResponse.userId)
+                        }
                     }
                 }
             } catch (e: ClientRequestException) {

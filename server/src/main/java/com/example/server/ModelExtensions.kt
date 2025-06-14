@@ -9,11 +9,11 @@ import org.jetbrains.exposed.sql.ResultRow
 
 fun ResultRow.toMeditationRoom(): MeditationRoom {
     return MeditationRoom(
-        id = this[MeditationRooms.id].toString(),
+        id = this[MeditationRooms.id].value.toString(),
         name = this[MeditationRooms.name],
-        creator = "TODO", // Получить из Users
+        creator = "User", // TODO: Получить имя пользователя из таблицы Users
         duration = this[MeditationRooms.durationMinutes],
-        participants = 0, // Получить из RoomParticipants
+        participants = 1, // По умолчанию 1 участник (создатель)
         goal = this[MeditationRooms.goal],
         isPublic = this[MeditationRooms.isPublic]
     )
@@ -21,14 +21,14 @@ fun ResultRow.toMeditationRoom(): MeditationRoom {
 
 fun ResultRow.toMusicRoom(): MusicRoom {
     return MusicRoom(
-        id = this[MusicRooms.id].toString(),
+        id = this[MusicRooms.id].value.toString(),
         name = this[MusicRooms.name],
-        creator = "TODO", // Получить из Users
+        creator = "User", // TODO: Получить имя пользователя из таблицы Users
         playlist = SpotifyPlaylist(
             id = this[MusicRooms.spotifyPlaylistId],
             name = this[MusicRooms.spotifyPlaylistName]
         ),
-        participants = 0, // Получить из RoomParticipants
+        participants = 1, // По умолчанию 1 участник (создатель)
         duration = this[MusicRooms.durationMinutes],
         isPublic = this[MusicRooms.isPublic]
     )

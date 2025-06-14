@@ -29,7 +29,7 @@ fun Route.musicRoutes() {
 
         post("/rooms") {
             val request = call.receive<CreateMusicRoomRequest>()
-            val userId = call.request.headers["X-User-Id"]?.toIntOrNull() ?: 1 // Временное решение
+            val userId = call.request.headers["X-User-Id"]?.toIntOrNull() ?: 1
 
             val roomId = transaction {
                 MusicRooms.insert {
@@ -41,9 +41,14 @@ fun Route.musicRoutes() {
                     it[isPublic] = request.isPublic
                     it[Users.createdAt] = LocalDateTime.now()
                 } get MusicRooms.id
-            }.value
+            }
 
-            call.respond(HttpStatusCode.Created, mapOf("id" to roomId.toString()))
+            // Возвращаем полный объект комнаты вместо только ID
+            val room = transaction {
+                MusicRooms.select { MusicRooms.id eq roomId }.single().toMusicRoom()
+            }
+
+            call.respond(HttpStatusCode.Created, room)
         }
 
         get("/rooms/{id}") {

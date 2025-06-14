@@ -28,7 +28,7 @@ fun Route.meditationRoutes() {
 
         post("/rooms") {
             val request = call.receive<CreateMeditationRoomRequest>()
-            val userId = call.request.headers["X-User-Id"]?.toIntOrNull() ?: 1 // Временное решение
+            val userId = call.request.headers["X-User-Id"]?.toIntOrNull() ?: 1
 
             val roomId = transaction {
                 MeditationRooms.insert {
@@ -41,7 +41,12 @@ fun Route.meditationRoutes() {
                 } get MeditationRooms.id
             }
 
-            call.respond(HttpStatusCode.Created, mapOf("id" to roomId.toString()))
+            // Возвращаем полный объект комнаты вместо только ID
+            val room = transaction {
+                MeditationRooms.select { MeditationRooms.id eq roomId }.single().toMeditationRoom()
+            }
+
+            call.respond(HttpStatusCode.Created, room)
         }
 
         post("/rooms/{id}/join") {
