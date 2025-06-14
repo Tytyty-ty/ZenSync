@@ -11,7 +11,7 @@ import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.json.Json
 
 object ApiClient {
-    private const val BASE_URL = "http://127.0.0.1:8080/"
+    private const val BASE_URL = "http://10.0.2.2:8081/" // Изменили порт на 8081
     private var authToken: String? = null
 
     val httpClient = HttpClient(CIO) {

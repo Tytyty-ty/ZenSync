@@ -51,23 +51,15 @@ class AuthViewModel : ViewModel() {
                         ApiClient.setAuthToken(authResponse.token)
                     }
                     else -> {
-                        val errorText = try {
-                            response.bodyAsText()
-                        } catch (e: Exception) {
-                            "Ошибка регистрации: ${response.status}"
-                        }
-                        _authState.value = AuthState.Error(errorText)
+                        val errorText = response.bodyAsText()
+                        _authState.value = AuthState.Error(errorText ?: "Ошибка регистрации")
                     }
                 }
             } catch (e: ClientRequestException) {
-                val errorText = try {
-                    e.response.bodyAsText()
-                } catch (e: Exception) {
-                    "Ошибка запроса: ${e.message}"
-                }
-                _authState.value = AuthState.Error(errorText)
+                val errorText = e.response.bodyAsText()
+                _authState.value = AuthState.Error(errorText ?: "Ошибка запроса")
             } catch (e: Exception) {
-                _authState.value = AuthState.Error("Не удалось подключиться к серверу: ${e.message}")
+                _authState.value = AuthState.Error(e.message ?: "Неизвестная ошибка")
             }
         }
     }
@@ -89,23 +81,15 @@ class AuthViewModel : ViewModel() {
                         ApiClient.setAuthToken(authResponse.token)
                     }
                     else -> {
-                        val errorText = try {
-                            response.bodyAsText()
-                        } catch (e: Exception) {
-                            "Ошибка входа: ${response.status}"
-                        }
-                        _authState.value = AuthState.Error(errorText)
+                        val errorText = response.bodyAsText()
+                        _authState.value = AuthState.Error(errorText ?: "Ошибка входа")
                     }
                 }
             } catch (e: ClientRequestException) {
-                val errorText = try {
-                    e.response.bodyAsText()
-                } catch (e: Exception) {
-                    "Неверные данные: ${e.message}"
-                }
-                _authState.value = AuthState.Error(errorText)
+                val errorText = e.response.bodyAsText()
+                _authState.value = AuthState.Error(errorText ?: "Неверные данные")
             } catch (e: Exception) {
-                _authState.value = AuthState.Error("Ошибка соединения: ${e.message}")
+                _authState.value = AuthState.Error(e.message ?: "Ошибка соединения")
             }
         }
     }

@@ -1,8 +1,9 @@
-package com.example.server.routes
+package com.example.zensyncserver.routes
 
 import com.example.zensyncapp.models.CreateMeditationRoomRequest
 import com.example.zensyncapp.models.MeditationRoom
-import com.example.zensyncserver.*
+import com.example.zensyncserver.MeditationRooms
+import com.example.zensyncserver.Users
 import com.example.zensyncserver.extensions.toMeditationRoom
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
@@ -10,9 +11,11 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import org.jetbrains.exposed.sql.insert
+import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.LocalDateTime
+import java.util.*
 
 fun Route.meditationRoutes() {
     route("/api/meditation") {
@@ -25,11 +28,12 @@ fun Route.meditationRoutes() {
 
         post("/rooms") {
             val request = call.receive<CreateMeditationRoomRequest>()
+            val userId = call.request.headers["X-User-Id"]?.toIntOrNull() ?: 1 // Временное решение
 
             val roomId = transaction {
                 MeditationRooms.insert {
                     it[name] = request.name
-                    it[creatorId] = 1 // TODO: ID текущего пользователя
+                    it[creatorId] = userId
                     it[durationMinutes] = request.duration
                     it[goal] = request.goal
                     it[isPublic] = request.isPublic
@@ -37,8 +41,19 @@ fun Route.meditationRoutes() {
                 } get MeditationRooms.id
             }
 
-            call.respond(HttpStatusCode.Created, mapOf("id" to roomId))
+            call.respond(HttpStatusCode.Created, mapOf("id" to roomId.toString()))
         }
-}
-    }
 
+        post("/rooms/{id}/join") {
+            val roomId = call.parameters["id"]?.toIntOrNull() ?: run {
+                call.respond(HttpStatusCode.BadRequest, "Invalid room ID")
+                return@post
+            }
+
+            val userId = call.request.headers["X-User-Id"]?.toIntOrNull() ?: 1 // Временное решение
+
+            // Здесь должна быть логика добавления участника
+            call.respond(HttpStatusCode.OK, mapOf("message" to "Joined successfully"))
+        }
+    }
+}

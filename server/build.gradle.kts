@@ -22,8 +22,6 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json-jvm:2.3.7")
     implementation("io.ktor:ktor-server-cors-jvm:2.3.7")
     implementation("io.ktor:ktor-server-call-logging:2.3.7")
-    implementation("io.ktor:ktor-server-websockets:2.3.7")
-    implementation("io.ktor:ktor-server-netty:2.3.7")
     implementation("org.jetbrains.exposed:exposed-core:0.44.1")
     implementation("org.jetbrains.exposed:exposed-crypt:0.44.1")
     implementation("org.jetbrains.exposed:exposed-dao:0.44.1")

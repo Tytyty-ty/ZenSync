@@ -1,4 +1,4 @@
-package com.example.server.routes
+package com.example.zensyncserver.routes
 
 import io.ktor.server.application.*
 import io.ktor.server.routing.*
@@ -9,43 +9,51 @@ import java.util.*
 
 fun Route.webSocketRoutes() {
     route("/ws") {
-        // Вебсокет для медитаций
         webSocket("/meditation/{roomId}") {
             val roomId = call.parameters["roomId"] ?: return@webSocket
             val sessionId = UUID.randomUUID().toString()
 
             try {
-                // Обработка входящих сообщений
+                send(Frame.Text("Welcome to meditation room $roomId"))
+
                 incoming.consumeEach { frame ->
                     if (frame is Frame.Text) {
                         val message = frame.readText()
-                        // Обработка команд и трансляция другим участникам
-                        // (реализация зависит от вашей бизнес-логики)
+                        when (message) {
+                            "play" -> send(Frame.Text("play"))
+                            "pause" -> send(Frame.Text("pause"))
+                            else -> send(Frame.Text("Unknown command"))
+                        }
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
-                // Очистка при отключении
+                // Cleanup
             }
         }
 
-        // Вебсокет для музыкальных комнат
         webSocket("/music/{roomId}") {
             val roomId = call.parameters["roomId"] ?: return@webSocket
             val sessionId = UUID.randomUUID().toString()
 
             try {
+                send(Frame.Text("Welcome to music room $roomId"))
+
                 incoming.consumeEach { frame ->
                     if (frame is Frame.Text) {
                         val message = frame.readText()
-                        // Обработка команд для музыкальных комнат
+                        when (message) {
+                            "play" -> send(Frame.Text("play"))
+                            "pause" -> send(Frame.Text("pause"))
+                            else -> send(Frame.Text("Unknown command"))
+                        }
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
-                // Очистка при отключении
+                // Cleanup
             }
         }
     }
