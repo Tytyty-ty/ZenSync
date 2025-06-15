@@ -154,8 +154,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     HttpStatusCode.Created -> {
                         val room = response.body<MusicRoom>()
                         _currentRoom.value = room
-                        joinMusicRoom(room.id)
-                        fetchRooms()
+                        _navigateToRoom.value = room.id
                     }
                     else -> {
                         val errorText = response.bodyAsText()
@@ -170,6 +169,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private val _navigateToRoom = MutableStateFlow<String?>(null)
+    val navigateToRoom: StateFlow<String?> = _navigateToRoom
+
+    fun onRoomNavigated() {
+        _navigateToRoom.value = null
+    }
+
     fun joinMusicRoom(roomId: String) {
         viewModelScope.launch {
             _isLoading.value = true
@@ -177,15 +183,17 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 val response = ApiClient.httpClient.post("/api/music/rooms/$roomId/join")
                 if (response.status == HttpStatusCode.OK) {
                     fetchRoomDetails(roomId)
+                    val token = ApiClient.getAuthToken()
+                    WebSocketService.startService(
+                        getApplication(),
+                        roomId,
+                        "music",
+                        token
+                    )
+                } else {
+                    val errorText = response.bodyAsText()
+                    _error.value = errorText ?: "Failed to join room"
                 }
-
-                val token = ApiClient.getAuthToken()
-                WebSocketService.startService(
-                    getApplication(),
-                    roomId,
-                    "music",
-                    token
-                )
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to join room"
             } finally {

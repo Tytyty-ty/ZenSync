@@ -149,12 +149,23 @@ fun Route.meditationRoutes() {
                 return@post
             }
 
-            transaction {
-                RoomParticipants.insert {
-                    it[RoomParticipants.roomId] = roomId
-                    it[RoomParticipants.roomType] = "meditation"
-                    it[RoomParticipants.userId] = userId
-                    it[RoomParticipants.joinedAt] = LocalDateTime.now()
+            // Проверяем, не является ли пользователь уже участником
+            val alreadyParticipant = transaction {
+                RoomParticipants.select {
+                    (RoomParticipants.roomId eq roomId) and
+                            (RoomParticipants.roomType eq "meditation") and
+                            (RoomParticipants.userId eq userId)
+                }.count() > 0
+            }
+
+            if (!alreadyParticipant) {
+                transaction {
+                    RoomParticipants.insert {
+                        it[RoomParticipants.roomId] = roomId
+                        it[RoomParticipants.roomType] = "meditation"
+                        it[RoomParticipants.userId] = userId
+                        it[RoomParticipants.joinedAt] = LocalDateTime.now()
+                    }
                 }
             }
 

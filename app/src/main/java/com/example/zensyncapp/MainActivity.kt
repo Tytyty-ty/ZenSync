@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
 
                     composable("JoinMeditationRoom") {
                         val meditationViewModel: MeditationViewModel = viewModel()
-                        MeditationRoomListScreen(
+                        JoinMeditationRoomScreen(
                             navController = navController,
                             viewModel = meditationViewModel
                         )
@@ -100,7 +100,7 @@ class MainActivity : ComponentActivity() {
                         val meditationViewModel: MeditationViewModel = viewModel()
 
                         LaunchedEffect(roomId) {
-                            webSocketManager.connectToMeditationRoom(roomId, ApiClient.getAuthToken())
+                            webSocketManager.connectToMeditationRoom(roomId)
                         }
 
                         DisposableEffect(Unit) {
@@ -119,7 +119,7 @@ class MainActivity : ComponentActivity() {
 
                     composable("CreateMusicRoom") {
                         val musicViewModel: MusicViewModel = viewModel()
-                        CreateMusicRoomScreen(
+                        CreateMusicRoomScreen( // Добавлен импорт или определение этого composable
                             navController = navController,
                             viewModel = musicViewModel
                         )
@@ -127,7 +127,7 @@ class MainActivity : ComponentActivity() {
 
                     composable("JoinMusicRoom") {
                         val musicViewModel: MusicViewModel = viewModel()
-                        MusicRoomListScreen(
+                        MusicRoomListScreen( // Изменено с JoinMusicRoomScreen на MusicRoomListScreen
                             navController = navController,
                             viewModel = musicViewModel
                         )
@@ -138,7 +138,7 @@ class MainActivity : ComponentActivity() {
                         val musicViewModel: MusicViewModel = viewModel()
 
                         LaunchedEffect(roomId) {
-                            webSocketManager.connectToMusicRoom(roomId, ApiClient.getAuthToken())
+                            webSocketManager.connectToMusicRoom(roomId)
                         }
 
                         DisposableEffect(Unit) {
@@ -168,3 +168,7 @@ class MainActivity : ComponentActivity() {
         webSocketManager.disconnect()
     }
 }
+
+
+
+
