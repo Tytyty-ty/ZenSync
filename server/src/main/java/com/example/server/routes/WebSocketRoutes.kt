@@ -32,6 +32,16 @@ fun Route.webSocketRoutes() {
                 session.send(Frame.Text("time:${roomData.currentTime}"))
                 session.send(Frame.Text(if (roomData.isPlaying) "play" else "pause"))
 
+                // Получаем информацию о пользователе из заголовков
+                val userId = call.request.headers["X-User-Id"]
+                val username = call.request.headers["X-Username"]
+
+                // Добавляем участника
+                if (userId != null && username != null) {
+                    roomData.participants[userId] = username
+                    roomData.broadcast("participant:$username")
+                }
+
                 incoming.consumeEach { frame ->
                     if (frame is Frame.Text) {
                         val message = frame.readText()
@@ -63,8 +73,10 @@ fun Route.webSocketRoutes() {
                                 roomData.timerJob?.cancel()
                                 roomData.broadcast("pause")
                             }
-                            message == "get_time" -> {
-                                session.send(Frame.Text("time:${roomData.currentTime}"))
+                            message == "get_participants" -> {
+                                roomData.participants.values.forEach { username ->
+                                    session.send(Frame.Text("participant:$username"))
+                                }
                             }
                             message.startsWith("time:") -> {
                                 roomData.currentTime = message.removePrefix("time:").toIntOrNull() ?: 0
@@ -92,6 +104,7 @@ class MeditationRoomData {
     var isPlaying: Boolean = false
     var timerJob: Job? = null
     val connections = ConcurrentHashMap<String, WebSocketSession>()
+    val participants = ConcurrentHashMap<String, String>() // userId to username
 
     suspend fun broadcast(message: String) {
         connections.values.forEach { session ->

@@ -20,15 +20,18 @@ class WebSocketService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         roomId = intent?.getStringExtra("roomId") ?: ""
         roomType = intent?.getStringExtra("roomType") ?: "meditation"
         val token = intent?.getStringExtra("token")
+        val userId = ApiClient.getUserId()
+        val username: String? = null
 
         serviceScope.launch {
             when (roomType) {
-                "meditation" -> webSocketManager.connectToMeditationRoom(roomId, token)
-                "music" -> webSocketManager.connectToMusicRoom(roomId, token)
+                "meditation" -> webSocketManager.connectToMeditationRoom(roomId, token, userId, username)
+                "music" -> webSocketManager.connectToMusicRoom(roomId, token, userId, username)
             }
         }
 
@@ -42,11 +45,20 @@ class WebSocketService : Service() {
     }
 
     companion object {
-        fun startService(context: Context, roomId: String, roomType: String, token: String? = null) {
+        fun startService(
+            context: Context,
+            roomId: String,
+            roomType: String,
+            token: String? = null,
+            userId: String? = null,
+            username: String? = null
+        ) {
             val intent = Intent(context, WebSocketService::class.java).apply {
                 putExtra("roomId", roomId)
                 putExtra("roomType", roomType)
                 token?.let { putExtra("token", it) }
+                userId?.let { putExtra("userId", it) }
+                username?.let { putExtra("username", it) }
             }
             context.startService(intent)
         }

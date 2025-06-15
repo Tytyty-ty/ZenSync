@@ -7,10 +7,13 @@ import com.example.zensyncapp.ApiClient
 import com.example.zensyncapp.models.MeditationRoom
 import com.example.zensyncapp.models.CreateMeditationRoomRequest
 import com.example.zensyncapp.WebSocketService
+import com.example.zensyncapp.network.WebSocketManager
 import io.ktor.client.call.body
 import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -34,6 +37,46 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
     private val _navigationEvent = MutableStateFlow<String?>(null)
     val navigationEvent: StateFlow<String?> = _navigationEvent
 
+    private val _roomParticipants = MutableStateFlow<List<String>>(emptyList())
+    val roomParticipants: StateFlow<List<String>> = _roomParticipants
+
+    private val _refreshInterval = MutableStateFlow(5000L) // 5 секунд
+    private var refreshJob: Job? = null
+
+    init {
+        startAutoRefresh()
+    }
+
+    private fun startAutoRefresh() {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            while (true) {
+                delay(_refreshInterval.value)
+                fetchRooms()
+            }
+        }
+    }
+
+    fun setRefreshInterval(interval: Long) {
+        _refreshInterval.value = interval
+        startAutoRefresh()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        refreshJob?.cancel()
+    }
+
+    fun setupWebSocketListeners(webSocketManager: WebSocketManager) {
+        viewModelScope.launch {
+            webSocketManager.participantUpdates.collect { participants ->
+                _roomParticipants.value = participants
+                _currentRoom.value?.let { currentRoom ->
+                    _currentRoom.value = currentRoom.copy(participants = participants.size)
+                }
+            }
+        }
+    }
     fun onNavigationHandled() {
         _navigationEvent.value = null
     }

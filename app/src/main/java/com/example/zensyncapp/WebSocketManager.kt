@@ -16,6 +16,8 @@ class WebSocketManager(private val client: HttpClient) {
     private var job: Job? = null
     private var timerJob: Job? = null
     private val messageChannel = Channel<String>(Channel.UNLIMITED)
+    private val _participantUpdates = MutableStateFlow<List<String>>(emptyList())
+    val participantUpdates: StateFlow<List<String>> = _participantUpdates
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying
@@ -59,7 +61,11 @@ class WebSocketManager(private val client: HttpClient) {
     private val _connectionState = mutableStateOf<ConnectionState>(ConnectionState.DISCONNECTED)
     val connectionState: State<ConnectionState> = _connectionState
 
-    suspend fun connectToMeditationRoom(roomId: String, authToken: String? = null) {
+    suspend fun connectToMeditationRoom(
+        roomId: String,
+        authToken: String? = null,
+        userId: String? = null,
+        username: String? = null) {
         try {
             _connectionState.value = ConnectionState.CONNECTING
             session?.close()
@@ -74,6 +80,12 @@ class WebSocketManager(private val client: HttpClient) {
                 }
                 authToken?.let {
                     header(HttpHeaders.Authorization, "Bearer $it")
+                }
+                userId?.let {
+                    header("X-User-Id", it)
+                }
+                username?.let {
+                    header("X-Username", it)
                 }
             }
 
@@ -119,7 +131,12 @@ class WebSocketManager(private val client: HttpClient) {
         }
     }
 
-    suspend fun connectToMusicRoom(roomId: String, authToken: String? = null) {
+    suspend fun connectToMusicRoom(
+        roomId: String,
+        authToken: String? = null,
+        userId: String? = null,
+        username: String? = null
+    ) {
         try {
             _connectionState.value = ConnectionState.CONNECTING
             session?.close()
@@ -194,6 +211,10 @@ class WebSocketManager(private val client: HttpClient) {
             message == "pause" -> {
                 _isPlaying.value = false
             }
+            message.startsWith("participants:") -> {
+                val participants = message.removePrefix("participants:").split(",")
+                _participantUpdates.value = participants
+            }
             message.startsWith("time:") -> {
                 val time = message.removePrefix("time:").toIntOrNull() ?: 0
                 _remainingTime.value = time
@@ -230,5 +251,8 @@ class WebSocketManager(private val client: HttpClient) {
         _roomDuration.value = 0
         _remainingTime.value = 0
         _serverTime.value = 0
+    }
+    suspend fun requestParticipantsUpdate() {
+        sendCommand("get_participants")
     }
 }

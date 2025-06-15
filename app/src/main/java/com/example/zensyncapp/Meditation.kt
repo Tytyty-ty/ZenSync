@@ -23,13 +23,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.zensyncapp.models.AuthResponse
 import com.example.zensyncapp.models.MeditationRoom
 import com.example.zensyncapp.network.WebSocketManager
 import com.example.zensyncapp.viewmodels.MeditationViewModel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @SuppressLint("StateFlowValueCalledInComposition")
@@ -251,18 +249,28 @@ fun LiveMeditationScreen(
     val room by viewModel.currentRoom.collectAsState()
     var showEndDialog by remember { mutableStateOf(false) }
     var showCompletionDialog by remember { mutableStateOf(false) }
-
-    // Конвертируем время в минуты и секунды
+    val participants by viewModel.roomParticipants.collectAsState()
+    val participantsList = remember(participants, currentUser) {
+        val list = participants.toMutableList()
+        if (currentUser?.username != null && !list.contains(currentUser.username)) {
+            list.add(currentUser.username)
+        }
+        list.map { if (it == currentUser?.username) "Вы" else it }
+    }
     val minutes = (serverTime / 60).coerceAtLeast(0)
     val seconds = (serverTime % 60).coerceAtLeast(0)
     LaunchedEffect(Unit) {
         webSocketManager.sendCommand("get_participants")
+        webSocketManager.requestParticipantsUpdate()
+        viewModel.setupWebSocketListeners(webSocketManager)
     }
 
     LaunchedEffect(roomId) {
         try {
             val token = ApiClient.getAuthToken()
-            webSocketManager.connectToMeditationRoom(roomId, token)
+            val userId = currentUser?.userId
+            val username = currentUser?.username
+            webSocketManager.connectToMeditationRoom(roomId, token, userId, username)
             viewModel.joinRoom(roomId)
 
             // Устанавливаем начальное время

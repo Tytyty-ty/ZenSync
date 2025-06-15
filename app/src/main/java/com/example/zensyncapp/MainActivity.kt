@@ -12,20 +12,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.zensyncapp.network.WebSocketManager
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.sp
-import android.widget.Toast
-import androidx.compose.foundation.clickable
-import androidx.compose.ui.unit.dp
-import androidx.navigation.NavController
 import com.example.zensyncapp.ui.theme.ZenSyncAppTheme
 import com.example.zensyncapp.viewmodels.AuthViewModel
 import com.example.zensyncapp.viewmodels.MeditationViewModel
@@ -111,9 +100,15 @@ class MainActivity : ComponentActivity() {
                         val roomId = backStackEntry.arguments?.getString("roomId") ?: ""
                         val meditationViewModel: MeditationViewModel = viewModel()
                         val authViewModel: AuthViewModel = viewModel()
+                        val currentUser = authViewModel.currentUser.value
 
                         LaunchedEffect(roomId) {
-                            webSocketManager.connectToMeditationRoom(roomId)
+                            webSocketManager.connectToMeditationRoom(
+                                roomId = roomId,
+                                authToken = ApiClient.getAuthToken(),
+                                userId = currentUser?.userId,
+                                username = currentUser?.username
+                            )
                         }
 
                         DisposableEffect(Unit) {
@@ -127,7 +122,7 @@ class MainActivity : ComponentActivity() {
                             roomId = roomId,
                             viewModel = meditationViewModel,
                             webSocketManager = webSocketManager,
-                            currentUser = authViewModel.currentUser.value
+                            currentUser = currentUser
                         )
                     }
 
@@ -151,9 +146,15 @@ class MainActivity : ComponentActivity() {
                         val roomId = backStackEntry.arguments?.getString("roomId") ?: ""
                         val musicViewModel: MusicViewModel = viewModel()
                         val authViewModel: AuthViewModel = viewModel()
+                        val currentUser = authViewModel.currentUser.value
 
                         LaunchedEffect(roomId) {
-                            webSocketManager.connectToMusicRoom(roomId)
+                            webSocketManager.connectToMusicRoom(
+                                roomId = roomId,
+                                authToken = ApiClient.getAuthToken(),
+                                userId = currentUser?.userId,
+                                username = currentUser?.username
+                            )
                         }
 
                         DisposableEffect(Unit) {
@@ -168,7 +169,7 @@ class MainActivity : ComponentActivity() {
                             roomId = roomId,
                             webSocketManager = webSocketManager,
                             viewModel = musicViewModel,
-                            currentUser = authViewModel.currentUser.value
+                            currentUser = currentUser
                         )
                     }
 
