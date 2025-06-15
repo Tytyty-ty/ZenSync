@@ -216,6 +216,17 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+    
+    fun cleanupOldRooms() {
+        viewModelScope.launch {
+            try {
+                ApiClient.httpClient.delete("/api/music/rooms/cleanup")
+                fetchRooms() // Обновляем список комнат после очистки
+            } catch (e: Exception) {
+                _error.value = "Failed to cleanup rooms"
+            }
+        }
+    }
 
     fun clearRooms() {
         viewModelScope.launch {

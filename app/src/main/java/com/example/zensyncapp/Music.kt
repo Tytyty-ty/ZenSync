@@ -162,17 +162,6 @@ fun MusicRoomCard(
                     text = "${room.participants} чел.",
                     style = MaterialTheme.typography.bodySmall
                 )
-                Spacer(modifier = Modifier.width(12.dp))
-                Icon(
-                    imageVector = Icons.Default.AccessTime,
-                    contentDescription = "Duration",
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "${room.duration} мин",
-                    style = MaterialTheme.typography.bodySmall
-                )
             }
         }
     }

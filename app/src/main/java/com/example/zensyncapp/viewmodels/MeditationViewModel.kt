@@ -122,6 +122,8 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
     }
+
+    // MeditationViewModel.kt
     fun cleanupOldRooms() {
         viewModelScope.launch {
             try {
@@ -141,7 +143,7 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 _currentRoom.value = null
                 WebSocketService.stopService(getApplication())
-                fetchRooms()
+                fetchRooms() // Обновляем список комнат
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to leave room"
             }

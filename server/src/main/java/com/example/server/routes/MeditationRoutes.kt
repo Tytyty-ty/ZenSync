@@ -192,7 +192,26 @@ fun Route.meditationRoutes() {
 
             call.respond(HttpStatusCode.OK, mapOf("message" to "Left successfully"))
         }
+        delete("/rooms/cleanup") {
+            val deletedCount = transaction {
+                // Находим ID комнат без участников
+                val roomsToDelete = MeditationRooms
+                    .leftJoin(RoomParticipants, { MeditationRooms.id }, { RoomParticipants.roomId })
+                    .slice(MeditationRooms.id)
+                    .select {
+                        (RoomParticipants.roomId.isNull()) and
+                                (RoomParticipants.roomType eq "meditation")
+                    }
+                    .map { it[MeditationRooms.id].value }
 
+                // Удаляем комнаты по одной (альтернатива inList)
+                roomsToDelete.sumOf { roomId ->
+                    MeditationRooms.deleteWhere { MeditationRooms.id eq roomId }
+                }
+            }
+
+            call.respond(HttpStatusCode.OK, mapOf("deleted" to deletedCount))
+        }
 
     }
 }

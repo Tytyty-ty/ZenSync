@@ -212,5 +212,25 @@ fun Route.musicRoutes() {
 
             call.respond(HttpStatusCode.OK, mapOf("message" to "Left successfully"))
         }
+
+        delete("/rooms/cleanup") {
+            val deletedCount = transaction {
+                // Находим ID комнат без участников
+                val roomsToDelete = (MusicRooms leftJoin RoomParticipants)
+                    .slice(MusicRooms.id)
+                    .select {
+                        (RoomParticipants.roomId.isNull()) and
+                                (RoomParticipants.roomType eq "music")
+                    }
+                    .map { it[MusicRooms.id].value }
+
+                // Удаляем комнаты по одной
+                roomsToDelete.sumOf { roomId ->
+                    MusicRooms.deleteWhere { MusicRooms.id eq roomId }
+                }
+            }
+
+            call.respond(HttpStatusCode.OK, mapOf("deleted" to deletedCount))
+        }
     }
 }
