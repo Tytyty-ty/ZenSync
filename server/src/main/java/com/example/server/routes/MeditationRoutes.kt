@@ -9,14 +9,15 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.JoinType
-import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.count
-import org.jetbrains.exposed.sql.deleteWhere
+import org.jetbrains.exposed.sql.leftJoin
 import java.time.LocalDateTime
 
 fun Route.meditationRoutes() {
@@ -62,13 +63,13 @@ fun Route.meditationRoutes() {
                     it[durationMinutes] = request.duration
                     it[goal] = request.goal
                     it[isPublic] = request.isPublic
-                    it[Users.createdAt] = LocalDateTime.now()
+                    it[createdAt] = LocalDateTime.now()
                 } get MeditationRooms.id
-            }
+            }.value
 
             transaction {
                 RoomParticipants.insert {
-                    it[RoomParticipants.roomId] = roomId.value
+                    it[RoomParticipants.roomId] = roomId
                     it[RoomParticipants.roomType] = "meditation"
                     it[RoomParticipants.userId] = userId
                     it[RoomParticipants.joinedAt] = LocalDateTime.now()
@@ -82,7 +83,7 @@ fun Route.meditationRoutes() {
                     .map {
                         val participantsCount = RoomParticipants
                             .select {
-                                RoomParticipants.roomId eq roomId.value and
+                                RoomParticipants.roomId eq roomId and
                                         (RoomParticipants.roomType eq "meditation")
                             }
                             .count()
@@ -160,6 +161,7 @@ fun Route.meditationRoutes() {
 
             call.respond(HttpStatusCode.OK)
         }
+
         post("/rooms/{id}/leave") {
             val roomId = call.parameters["id"]?.toIntOrNull() ?: run {
                 call.respond(HttpStatusCode.BadRequest, "Invalid room ID")

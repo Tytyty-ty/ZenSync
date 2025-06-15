@@ -193,6 +193,11 @@ fun MusicRoomDetailScreen(
     val isPlaying by webSocketManager.isPlaying.collectAsState()
     val currentTime by webSocketManager.currentTime.collectAsState()
 
+
+    LaunchedEffect(Unit) {
+        webSocketManager.sendCommand("get_participants")
+    }
+
     LaunchedEffect(roomId) {
         viewModel.fetchRoomDetails(roomId)
     }

@@ -9,11 +9,13 @@ import io.ktor.http.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.channels.Channel
 
 class WebSocketManager(private val client: HttpClient) {
     private var session: DefaultClientWebSocketSession? = null
     private var job: Job? = null
     private var timerJob: Job? = null
+    private val messageChannel = Channel<String>(Channel.UNLIMITED)
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying
@@ -39,10 +41,12 @@ class WebSocketManager(private val client: HttpClient) {
     fun initializeRoom(durationMinutes: Int) {
         _roomDuration.value = durationMinutes * 60
         _remainingTime.value = durationMinutes * 60
+        _serverTime.value = durationMinutes * 60
     }
 
     fun setInitialTime(minutes: Int) {
         _remainingTime.value = minutes * 60
+        _serverTime.value = minutes * 60
     }
 
     sealed class ConnectionState {
@@ -76,24 +80,37 @@ class WebSocketManager(private val client: HttpClient) {
             job = CoroutineScope(Dispatchers.IO).launch {
                 _connectionState.value = ConnectionState.CONNECTED
 
-                try {
-                    session?.incoming?.consumeAsFlow()?.collect { frame ->
-                        if (frame is Frame.Text) {
-                            val message = frame.readText()
-                            handleMessage(message)
+                // Launch a separate coroutine to handle incoming messages
+                launch {
+                    try {
+                        session?.incoming?.consumeAsFlow()?.collect { frame ->
+                            if (frame is Frame.Text) {
+                                val message = frame.readText()
+                                messageChannel.send(message)
+                            }
                         }
+                    } catch (e: Exception) {
+                        _connectionState.value = ConnectionState.ERROR(e.message ?: "Connection error")
                     }
-                } catch (e: Exception) {
-                    _connectionState.value = ConnectionState.ERROR(e.message ?: "Connection error")
+                }
+
+                // Process messages from the channel
+                launch {
+                    for (message in messageChannel) {
+                        handleMessage(message)
+                    }
                 }
             }
 
-            // Запускаем таймер для периодического обновления времени
+            // Start timer for periodic updates
             timerJob = CoroutineScope(Dispatchers.IO).launch {
                 while (true) {
                     delay(1000)
-                    if (isPlaying.value) {
-                        sendCommand("get_time")
+                    if (isPlaying.value && _serverTime.value > 0) {
+                        _serverTime.value = _serverTime.value - 1
+                        if (_serverTime.value <= 0) {
+                            _isPlaying.value = false
+                        }
                     }
                 }
             }
@@ -169,15 +186,14 @@ class WebSocketManager(private val client: HttpClient) {
             message.startsWith("duration:") -> {
                 _roomDuration.value = message.removePrefix("duration:").toIntOrNull() ?: 0
                 _remainingTime.value = _roomDuration.value
+                _serverTime.value = _roomDuration.value
             }
             message == "play" -> {
                 _isPlaying.value = true
-                // При старте медитации запрашиваем актуальное время у сервера
-                CoroutineScope(Dispatchers.IO).launch {
-                    sendCommand("get_time")
-                }
             }
-            message == "pause" -> _isPlaying.value = false
+            message == "pause" -> {
+                _isPlaying.value = false
+            }
             message.startsWith("time:") -> {
                 val time = message.removePrefix("time:").toIntOrNull() ?: 0
                 _remainingTime.value = time
@@ -203,6 +219,7 @@ class WebSocketManager(private val client: HttpClient) {
         timerJob?.cancel()
         runBlocking {
             session?.close()
+            messageChannel.close()
         }
         session = null
         _connectionState.value = ConnectionState.DISCONNECTED

@@ -10,57 +10,65 @@ import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 
 fun Route.webSocketRoutes() {
+    val meditationRooms = ConcurrentHashMap<String, MeditationRoomData>()
+
     route("/ws") {
         webSocket("/meditation/{roomId}") {
-            var currentTime = 0
-            var roomDuration = 0
-            var timerJob: Job? = null
             val roomId = call.parameters["roomId"] ?: return@webSocket
+            val session = this
+
+            // Инициализируем данные комнаты, если их нет
+            val roomData = meditationRooms.getOrPut(roomId) {
+                MeditationRoomData()
+            }
 
             try {
-                // Отправляем текущее время новому участнику
-                send(Frame.Text("time:$currentTime"))
+                roomData.connections[session.hashCode().toString()] = session
+
+                // Отправляем текущее состояние новому участнику
+                session.send(Frame.Text("time:${roomData.currentTime}"))
+                session.send(Frame.Text(if (roomData.isPlaying) "play" else "pause"))
 
                 incoming.consumeEach { frame ->
                     if (frame is Frame.Text) {
                         val message = frame.readText()
                         when {
                             message.startsWith("duration:") -> {
-                                roomDuration = message.removePrefix("duration:").toIntOrNull() ?: 0
-                                currentTime = roomDuration
-                                send(Frame.Text("time:$currentTime"))
+                                roomData.duration = message.removePrefix("duration:").toIntOrNull() ?: 0
+                                roomData.currentTime = roomData.duration
+                                roomData.broadcast("time:${roomData.currentTime}")
                             }
                             message == "play" -> {
-                                // Отменяем предыдущий таймер, если он был
-                                timerJob?.cancel()
-                                // Запускаем новый таймер
-                                timerJob = launch {
-                                    while (currentTime > 0) {
+                                roomData.isPlaying = true
+                                roomData.timerJob?.cancel()
+                                roomData.timerJob = launch {
+                                    while (roomData.currentTime > 0 && roomData.isPlaying) {
                                         delay(1000)
-                                        currentTime--
-                                        send(Frame.Text("time:$currentTime"))
-                                        if (currentTime <= 0) {
-                                            send(Frame.Text("completed"))
+                                        roomData.currentTime--
+                                        roomData.broadcast("time:${roomData.currentTime}")
+                                        if (roomData.currentTime <= 0) {
+                                            roomData.broadcast("completed")
+                                            roomData.isPlaying = false
                                             break
                                         }
                                     }
                                 }
-                                send(Frame.Text("play"))
+                                roomData.broadcast("play")
                             }
                             message == "pause" -> {
-                                // Останавливаем таймер
-                                timerJob?.cancel()
-                                send(Frame.Text("pause"))
+                                roomData.isPlaying = false
+                                roomData.timerJob?.cancel()
+                                roomData.broadcast("pause")
                             }
                             message == "get_time" -> {
-                                // Отправляем текущее время по запросу
-                                send(Frame.Text("time:$currentTime"))
+                                session.send(Frame.Text("time:${roomData.currentTime}"))
                             }
                             message.startsWith("time:") -> {
-                                // Обновляем время (если пришло извне)
-                                currentTime = message.removePrefix("time:").toIntOrNull() ?: 0
+                                roomData.currentTime = message.removePrefix("time:").toIntOrNull() ?: 0
+                                roomData.broadcast("time:${roomData.currentTime}")
                             }
                         }
                     }
@@ -68,29 +76,30 @@ fun Route.webSocketRoutes() {
             } catch (e: Exception) {
                 println("WebSocket error: ${e.message}")
             } finally {
-                timerJob?.cancel()
+                roomData.connections.remove(session.hashCode().toString())
+                if (roomData.connections.isEmpty()) {
+                    meditationRooms.remove(roomId)
+                }
                 coroutineContext.cancelChildren()
             }
         }
+    }
+}
 
-        webSocket("/music/{roomId}") {
-            val roomId = call.parameters["roomId"] ?: return@webSocket
+class MeditationRoomData {
+    var currentTime: Int = 0
+    var duration: Int = 0
+    var isPlaying: Boolean = false
+    var timerJob: Job? = null
+    val connections = ConcurrentHashMap<String, WebSocketSession>()
 
+    suspend fun broadcast(message: String) {
+        connections.values.forEach { session ->
             try {
-                send(Frame.Text("Welcome to music room $roomId"))
-
-                incoming.consumeEach { frame ->
-                    if (frame is Frame.Text) {
-                        val message = frame.readText()
-                        when (message) {
-                            "play" -> send(Frame.Text("play"))
-                            "pause" -> send(Frame.Text("pause"))
-                            else -> send(Frame.Text("Unknown command"))
-                        }
-                    }
-                }
+                session.send(Frame.Text(message))
             } catch (e: Exception) {
-                e.printStackTrace()
+                println("Failed to send message: ${e.message}")
+                connections.remove(session.hashCode().toString())
             }
         }
     }

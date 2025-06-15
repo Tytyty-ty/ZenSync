@@ -141,6 +141,7 @@ fun JoinMeditationRoomScreen(
     val rooms by viewModel.rooms.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
     val isLoading by viewModel.isLoading.collectAsState()
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         viewModel.fetchRooms()
@@ -246,14 +247,17 @@ fun LiveMeditationScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val isPlaying by webSocketManager.isPlaying.collectAsState()
-    val remainingTime by webSocketManager.remainingTime.collectAsState()
     val serverTime by webSocketManager.serverTime.collectAsState()
     val room by viewModel.currentRoom.collectAsState()
     var showEndDialog by remember { mutableStateOf(false) }
     var showCompletionDialog by remember { mutableStateOf(false) }
 
-    // Используем serverTime для отображения
-    val displayTime = serverTime
+    // Конвертируем время в минуты и секунды
+    val minutes = (serverTime / 60).coerceAtLeast(0)
+    val seconds = (serverTime % 60).coerceAtLeast(0)
+    LaunchedEffect(Unit) {
+        webSocketManager.sendCommand("get_participants")
+    }
 
     LaunchedEffect(roomId) {
         try {
@@ -261,8 +265,8 @@ fun LiveMeditationScreen(
             webSocketManager.connectToMeditationRoom(roomId, token)
             viewModel.joinRoom(roomId)
 
+            // Устанавливаем начальное время
             room?.duration?.let { duration ->
-                webSocketManager.initializeRoom(duration)
                 webSocketManager.sendCommand("duration:${duration * 60}")
                 webSocketManager.sendCommand("time:${duration * 60}")
             }
@@ -271,7 +275,7 @@ fun LiveMeditationScreen(
         }
     }
 
-    // Проверка завершения медитации
+    // Обработка завершения медитации
     LaunchedEffect(serverTime) {
         if (serverTime <= 0 && isPlaying) {
             webSocketManager.sendCommand("pause")
@@ -285,7 +289,7 @@ fun LiveMeditationScreen(
             if (isPlaying) {
                 webSocketManager.sendCommand("pause")
             } else {
-                if (remainingTime <= 0) {
+                if (serverTime <= 0) {
                     room?.duration?.let { duration ->
                         webSocketManager.sendCommand("duration:${duration * 60}")
                         webSocketManager.sendCommand("time:${duration * 60}")
@@ -365,7 +369,7 @@ fun LiveMeditationScreen(
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "${displayTime / 60}:${"%02d".format(displayTime % 60)}",
+                    text = "%02d:%02d".format(minutes, seconds),
                     color = Color.White,
                     fontSize = 64.sp,
                     fontWeight = FontWeight.Light
@@ -441,6 +445,7 @@ fun LiveMeditationScreen(
                 Button(
                     onClick = {
                         showEndDialog = false
+                        viewModel.leaveRoom(roomId)
                         navController.popBackStack()
                     }
                 ) {

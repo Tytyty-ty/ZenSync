@@ -73,6 +73,7 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                         _currentRoom.value = room
                         joinRoom(room.id)
                         _navigationEvent.value = room.id
+                        fetchRooms()
                     }
                     else -> {
                         val errorText = response.bodyAsText()
@@ -97,13 +98,10 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
 
                 when (response.status) {
                     HttpStatusCode.OK -> {
-                        // Update room details after joining
                         val roomResponse = ApiClient.httpClient.get("/api/meditation/rooms/$roomId")
                         if (roomResponse.status == HttpStatusCode.OK) {
                             _currentRoom.value = roomResponse.body()
                         }
-
-                        // Start WebSocket connection
                         val token = ApiClient.getAuthToken()
                         WebSocketService.startService(
                             getApplication(),
@@ -124,11 +122,11 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
     }
-
     fun cleanupOldRooms() {
         viewModelScope.launch {
             try {
                 ApiClient.httpClient.delete("/api/meditation/rooms/cleanup")
+                fetchRooms() // Обновляем список комнат после очистки
             } catch (e: Exception) {
                 _error.value = "Failed to cleanup rooms"
             }
@@ -143,6 +141,7 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 _currentRoom.value = null
                 WebSocketService.stopService(getApplication())
+                fetchRooms()
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to leave room"
             }

@@ -49,6 +49,8 @@ class MainActivity : ComponentActivity() {
             ZenSyncAppTheme {
                 val navController = rememberNavController()
                 val authViewModel: AuthViewModel = viewModel()
+                val meditationViewModel: MeditationViewModel = viewModel()
+
 
                 LaunchedEffect(authViewModel.currentUser.value) {
                     authViewModel.currentUser.value?.let { user ->
@@ -145,7 +147,6 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-
                     composable("MusicRoom/{roomId}") { backStackEntry ->
                         val roomId = backStackEntry.arguments?.getString("roomId") ?: ""
                         val musicViewModel: MusicViewModel = viewModel()
@@ -184,7 +185,3 @@ class MainActivity : ComponentActivity() {
         webSocketManager.disconnect()
     }
 }
-
-
-
-
