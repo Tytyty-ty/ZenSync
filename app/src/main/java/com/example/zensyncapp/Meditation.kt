@@ -142,6 +142,10 @@ fun JoinMeditationRoomScreen(
     var searchQuery by remember { mutableStateOf("") }
     val isLoading by viewModel.isLoading.collectAsState()
 
+    LaunchedEffect(Unit) {
+        viewModel.fetchRooms()
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -167,19 +171,26 @@ fun JoinMeditationRoomScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
+        } else if (rooms.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Нет доступных комнат")
+            }
         } else {
             LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
                 items(
                     rooms.filter { room ->
                         room.name.contains(searchQuery, ignoreCase = true) ||
                                 room.creator.contains(searchQuery, ignoreCase = true) ||
-                                (room.goal?.contains(searchQuery, ignoreCase = true) ?: false)
+                                room.goal?.contains(searchQuery, ignoreCase = true) ?: false
                     }
                 ) { room ->
-                    MeditationRoomCard(room = room) {
-                        viewModel.joinRoom(room.id)
-                        navController.navigate("LiveMeditationSession/${room.id}")
-                    }
+                    MeditationRoomCard(
+                        room = room,
+                        onClick = {
+                            viewModel.joinRoom(room.id)
+                            navController.navigate("LiveMeditationSession/${room.id}")
+                        }
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
             }
@@ -188,10 +199,7 @@ fun JoinMeditationRoomScreen(
 }
 
 @Composable
-fun MeditationRoomCard(
-    room: MeditationRoom,
-    onClick: () -> Unit
-) {
+fun MeditationRoomCard(room: MeditationRoom, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -199,60 +207,29 @@ fun MeditationRoomCard(
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = room.name,
-                style = MaterialTheme.typography.titleMedium
-            )
+            Text(text = room.name, style = MaterialTheme.typography.titleMedium)
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(top = 4.dp)
-            ) {
-                Icon(
-                    Icons.Default.AccountCircle,
-                    contentDescription = "Создатель",
-                    modifier = Modifier.size(16.dp)
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Person, null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = room.creator,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                room.goal?.let { goal ->
-                    Text(
-                        text = "Цель: $goal",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
-                }
+                Text(text = room.creator, style = MaterialTheme.typography.bodyMedium)
             }
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(top = 8.dp)
-            ) {
-                Icon(
-                    Icons.Default.People,
-                    contentDescription = "Участники",
-                    modifier = Modifier.size(16.dp)
-                )
+            room.goal?.let { goal ->
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = "Цель: $goal", style = MaterialTheme.typography.bodySmall)
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.People, null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "${room.participants} чел.",
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Text(text = "${room.participants} чел.", style = MaterialTheme.typography.bodySmall)
+
                 Spacer(modifier = Modifier.width(12.dp))
-                Icon(
-                    Icons.Default.AccessTime,
-                    contentDescription = "Длительность",
-                    modifier = Modifier.size(16.dp)
-                )
+                Icon(Icons.Default.Timer, null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "${room.duration} мин",
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Text(text = "${room.duration} мин", style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -270,18 +247,23 @@ fun LiveMeditationScreen(
     val coroutineScope = rememberCoroutineScope()
     val isPlaying by webSocketManager.isPlaying.collectAsState()
     val remainingTime by webSocketManager.remainingTime.collectAsState()
+    val serverTime by webSocketManager.serverTime.collectAsState()
     val room by viewModel.currentRoom.collectAsState()
     var showEndDialog by remember { mutableStateOf(false) }
     var showCompletionDialog by remember { mutableStateOf(false) }
 
-    // Инициализация комнаты
+    // Используем serverTime для отображения
+    val displayTime = serverTime
+
     LaunchedEffect(roomId) {
         try {
             val token = ApiClient.getAuthToken()
             webSocketManager.connectToMeditationRoom(roomId, token)
             viewModel.joinRoom(roomId)
+
             room?.duration?.let { duration ->
-                webSocketManager.setInitialTime(duration)
+                webSocketManager.initializeRoom(duration)
+                webSocketManager.sendCommand("duration:${duration * 60}")
                 webSocketManager.sendCommand("time:${duration * 60}")
             }
         } catch (e: Exception) {
@@ -289,20 +271,9 @@ fun LiveMeditationScreen(
         }
     }
 
-    // Обработка таймера
-    LaunchedEffect(isPlaying) {
-        if (isPlaying) {
-            while (isPlaying && remainingTime > 0) {
-                delay(1000)
-                val newTime = remainingTime - 1
-                webSocketManager.sendCommand("time:$newTime")
-            }
-        }
-    }
-
     // Проверка завершения медитации
-    LaunchedEffect(remainingTime) {
-        if (remainingTime <= 0 && isPlaying) {
+    LaunchedEffect(serverTime) {
+        if (serverTime <= 0 && isPlaying) {
             webSocketManager.sendCommand("pause")
             showCompletionDialog = true
         }
@@ -314,10 +285,9 @@ fun LiveMeditationScreen(
             if (isPlaying) {
                 webSocketManager.sendCommand("pause")
             } else {
-                // Если время вышло, сбрасываем таймер
                 if (remainingTime <= 0) {
                     room?.duration?.let { duration ->
-                        webSocketManager.setInitialTime(duration)
+                        webSocketManager.sendCommand("duration:${duration * 60}")
                         webSocketManager.sendCommand("time:${duration * 60}")
                     }
                 }
@@ -330,7 +300,6 @@ fun LiveMeditationScreen(
     if (showCompletionDialog) {
         AlertDialog(
             onDismissRequest = {
-                showCompletionDialog = false
                 navController.navigate("MainHub") { popUpTo(0) }
             },
             title = { Text("Медитация завершена!") },
@@ -338,7 +307,6 @@ fun LiveMeditationScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        showCompletionDialog = false
                         navController.navigate("MainHub") { popUpTo(0) }
                     }
                 ) {
@@ -397,7 +365,7 @@ fun LiveMeditationScreen(
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "${remainingTime / 60}:${"%02d".format(remainingTime % 60)}",
+                    text = "${displayTime / 60}:${"%02d".format(displayTime % 60)}",
                     color = Color.White,
                     fontSize = 64.sp,
                     fontWeight = FontWeight.Light

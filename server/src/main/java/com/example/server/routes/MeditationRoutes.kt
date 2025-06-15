@@ -190,5 +190,7 @@ fun Route.meditationRoutes() {
 
             call.respond(HttpStatusCode.OK, mapOf("message" to "Left successfully"))
         }
+
+
     }
 }

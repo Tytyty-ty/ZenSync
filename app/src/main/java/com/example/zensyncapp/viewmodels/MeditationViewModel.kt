@@ -124,6 +124,17 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
     }
+
+    fun cleanupOldRooms() {
+        viewModelScope.launch {
+            try {
+                ApiClient.httpClient.delete("/api/meditation/rooms/cleanup")
+            } catch (e: Exception) {
+                _error.value = "Failed to cleanup rooms"
+            }
+        }
+    }
+
     fun leaveRoom(roomId: String) {
         viewModelScope.launch {
             try {

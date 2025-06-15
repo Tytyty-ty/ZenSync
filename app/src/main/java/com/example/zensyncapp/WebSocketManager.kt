@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.*
 class WebSocketManager(private val client: HttpClient) {
     private var session: DefaultClientWebSocketSession? = null
     private var job: Job? = null
+    private var timerJob: Job? = null
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying
@@ -23,16 +24,23 @@ class WebSocketManager(private val client: HttpClient) {
     private val _currentTime = MutableStateFlow(0)
     val currentTime: StateFlow<Int> = _currentTime
 
-    private val _roomDuration = MutableStateFlow(0) // Добавляем длительность комнаты
+    private val _roomDuration = MutableStateFlow(0)
     val roomDuration: StateFlow<Int> = _roomDuration
 
     private val _messages = mutableStateListOf<String>()
     val messages: SnapshotStateList<String> = _messages
 
-    private val _remainingTime = MutableStateFlow(0) // Оставшееся время в секундах
+    private val _remainingTime = MutableStateFlow(0)
     val remainingTime: StateFlow<Int> = _remainingTime
 
-    // Устанавливаем начальное время медитации (в минутах)
+    private val _serverTime = MutableStateFlow(0)
+    val serverTime: StateFlow<Int> = _serverTime
+
+    fun initializeRoom(durationMinutes: Int) {
+        _roomDuration.value = durationMinutes * 60
+        _remainingTime.value = durationMinutes * 60
+    }
+
     fun setInitialTime(minutes: Int) {
         _remainingTime.value = minutes * 60
     }
@@ -47,20 +55,16 @@ class WebSocketManager(private val client: HttpClient) {
     private val _connectionState = mutableStateOf<ConnectionState>(ConnectionState.DISCONNECTED)
     val connectionState: State<ConnectionState> = _connectionState
 
-    // Добавляем метод для установки длительности комнаты
-    fun setRoomDuration(duration: Int) {
-        _roomDuration.value = duration * 60 // Конвертируем минуты в секунды
-    }
-
     suspend fun connectToMeditationRoom(roomId: String, authToken: String? = null) {
         try {
             _connectionState.value = ConnectionState.CONNECTING
             session?.close()
+            timerJob?.cancel()
 
             session = client.webSocketSession {
                 url {
                     protocol = URLProtocol.WS
-                    host = "10.0.2.2"
+                    host = "192.168.3.6"
                     port = 8081
                     path("ws/meditation/$roomId")
                 }
@@ -83,6 +87,16 @@ class WebSocketManager(private val client: HttpClient) {
                     _connectionState.value = ConnectionState.ERROR(e.message ?: "Connection error")
                 }
             }
+
+            // Запускаем таймер для периодического обновления времени
+            timerJob = CoroutineScope(Dispatchers.IO).launch {
+                while (true) {
+                    delay(1000)
+                    if (isPlaying.value) {
+                        sendCommand("get_time")
+                    }
+                }
+            }
         } catch (e: Exception) {
             _connectionState.value = ConnectionState.ERROR(e.message ?: "Connection failed")
         }
@@ -92,11 +106,12 @@ class WebSocketManager(private val client: HttpClient) {
         try {
             _connectionState.value = ConnectionState.CONNECTING
             session?.close()
+            timerJob?.cancel()
 
             session = client.webSocketSession {
                 url {
                     protocol = URLProtocol.WS
-                    host = "10.0.2.2"
+                    host = "192.168.3.6"
                     port = 8081
                     path("ws/music/$roomId")
                 }
@@ -151,19 +166,22 @@ class WebSocketManager(private val client: HttpClient) {
 
     private fun handleMessage(message: String) {
         when {
+            message.startsWith("duration:") -> {
+                _roomDuration.value = message.removePrefix("duration:").toIntOrNull() ?: 0
+                _remainingTime.value = _roomDuration.value
+            }
             message == "play" -> {
                 _isPlaying.value = true
-                // При старте не сбрасываем время, используем текущее значение
+                // При старте медитации запрашиваем актуальное время у сервера
+                CoroutineScope(Dispatchers.IO).launch {
+                    sendCommand("get_time")
+                }
             }
             message == "pause" -> _isPlaying.value = false
             message.startsWith("time:") -> {
-                val time = message.removePrefix("time:").toIntOrNull()
-                time?.let {
-                    _remainingTime.value = it
-                    if (it <= 0) {
-                        _isPlaying.value = false
-                    }
-                }
+                val time = message.removePrefix("time:").toIntOrNull() ?: 0
+                _remainingTime.value = time
+                _serverTime.value = time
             }
             message.startsWith("participant:") -> {
                 val participant = message.removePrefix("participant:")
@@ -171,12 +189,18 @@ class WebSocketManager(private val client: HttpClient) {
                     _participants.add(participant)
                 }
             }
+            message == "completed" -> {
+                _isPlaying.value = false
+                _remainingTime.value = 0
+                _serverTime.value = 0
+            }
             else -> _messages.add(message)
         }
     }
 
     fun disconnect() {
         job?.cancel()
+        timerJob?.cancel()
         runBlocking {
             session?.close()
         }
@@ -186,6 +210,8 @@ class WebSocketManager(private val client: HttpClient) {
         _messages.clear()
         _isPlaying.value = false
         _currentTime.value = 0
-        _roomDuration.value = 0 // Сбрасываем длительность при отключении
+        _roomDuration.value = 0
+        _remainingTime.value = 0
+        _serverTime.value = 0
     }
 }

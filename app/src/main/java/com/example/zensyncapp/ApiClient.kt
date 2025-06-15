@@ -1,5 +1,6 @@
 package com.example.zensyncapp
 
+import android.os.Build
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
@@ -11,9 +12,22 @@ import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.json.Json
 
 object ApiClient {
-    private const val BASE_URL = "http://10.0.2.2:8081/"
+    private const val BASE_URL = "http://192.168.3.6:8081/"
     private var authToken: String? = null
     private var userId: String? = null
+
+
+    private fun isRunningOnEmulator(): Boolean {
+        return Build.FINGERPRINT.startsWith("generic") ||
+                Build.FINGERPRINT.startsWith("unknown") ||
+                Build.MODEL.contains("google_sdk") ||
+                Build.MODEL.contains("Emulator") ||
+                Build.MODEL.contains("Android SDK built for x86") ||
+                Build.MANUFACTURER.contains("Genymotion") ||
+                (Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic")) ||
+                "google_sdk" == Build.PRODUCT
+    }
+
 
     val httpClient = HttpClient(CIO) {
         install(ContentNegotiation) {

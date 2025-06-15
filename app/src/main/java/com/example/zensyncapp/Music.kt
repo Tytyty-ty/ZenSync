@@ -559,6 +559,11 @@ fun MusicRoomListScreen(
     val rooms by viewModel.rooms.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
 
+    LaunchedEffect(Unit) {
+        viewModel.clearRooms()
+        viewModel.fetchRooms()
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

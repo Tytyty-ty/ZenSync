@@ -125,6 +125,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                         trackCount = 30,
                         durationMs = 5400000
                     )
+
                 )
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to load playlists"
@@ -205,7 +206,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     fun leaveRoom(roomId: String) {
         viewModelScope.launch {
             try {
-                ApiClient.httpClient.post("/api/meditation/rooms/$roomId/leave") {
+                ApiClient.httpClient.post("/api/music/rooms/$roomId/leave") {
                     contentType(ContentType.Application.Json)
                 }
                 _currentRoom.value = null
@@ -213,6 +214,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to leave room"
             }
+        }
+    }
+
+    fun clearRooms() {
+        viewModelScope.launch {
+            _rooms.value = emptyList()
         }
     }
 }
