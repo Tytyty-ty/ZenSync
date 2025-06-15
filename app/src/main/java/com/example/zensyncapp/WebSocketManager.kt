@@ -23,8 +23,19 @@ class WebSocketManager(private val client: HttpClient) {
     private val _currentTime = MutableStateFlow(0)
     val currentTime: StateFlow<Int> = _currentTime
 
+    private val _roomDuration = MutableStateFlow(0) // Добавляем длительность комнаты
+    val roomDuration: StateFlow<Int> = _roomDuration
+
     private val _messages = mutableStateListOf<String>()
     val messages: SnapshotStateList<String> = _messages
+
+    private val _remainingTime = MutableStateFlow(0) // Оставшееся время в секундах
+    val remainingTime: StateFlow<Int> = _remainingTime
+
+    // Устанавливаем начальное время медитации (в минутах)
+    fun setInitialTime(minutes: Int) {
+        _remainingTime.value = minutes * 60
+    }
 
     sealed class ConnectionState {
         object CONNECTED : ConnectionState()
@@ -35,6 +46,11 @@ class WebSocketManager(private val client: HttpClient) {
 
     private val _connectionState = mutableStateOf<ConnectionState>(ConnectionState.DISCONNECTED)
     val connectionState: State<ConnectionState> = _connectionState
+
+    // Добавляем метод для установки длительности комнаты
+    fun setRoomDuration(duration: Int) {
+        _roomDuration.value = duration * 60 // Конвертируем минуты в секунды
+    }
 
     suspend fun connectToMeditationRoom(roomId: String, authToken: String? = null) {
         try {
@@ -137,12 +153,17 @@ class WebSocketManager(private val client: HttpClient) {
         when {
             message == "play" -> {
                 _isPlaying.value = true
-                _currentTime.value = 0
+                // При старте не сбрасываем время, используем текущее значение
             }
             message == "pause" -> _isPlaying.value = false
             message.startsWith("time:") -> {
                 val time = message.removePrefix("time:").toIntOrNull()
-                time?.let { _currentTime.value = it }
+                time?.let {
+                    _remainingTime.value = it
+                    if (it <= 0) {
+                        _isPlaying.value = false
+                    }
+                }
             }
             message.startsWith("participant:") -> {
                 val participant = message.removePrefix("participant:")
@@ -165,5 +186,6 @@ class WebSocketManager(private val client: HttpClient) {
         _messages.clear()
         _isPlaying.value = false
         _currentTime.value = 0
+        _roomDuration.value = 0 // Сбрасываем длительность при отключении
     }
 }

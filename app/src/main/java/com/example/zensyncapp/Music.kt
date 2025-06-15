@@ -364,12 +364,14 @@ private fun PlayerControls(
 
 @Composable
 private fun ParticipantsSection(room: MusicRoom, currentUser: AuthResponse?) {
-    val participantsList = remember(room) {
+    val participantsList = remember(room, currentUser) {
         val list = mutableListOf<String>()
-        if (room.creator != currentUser?.username) {
+        if (room.creator == currentUser?.username) {
+            list.add("Вы (Создатель)")
+        } else {
             list.add(room.creator)
+            currentUser?.username?.let { list.add("Вы") }
         }
-        list.add("Вы")
         list
     }
 
@@ -387,7 +389,7 @@ private fun ParticipantsSection(room: MusicRoom, currentUser: AuthResponse?) {
                     imageVector = Icons.Default.AccountCircle,
                     contentDescription = null,
                     modifier = Modifier.size(48.dp),
-                    tint = if (user == "Вы") MaterialTheme.colorScheme.primary
+                    tint = if (user.startsWith("Вы")) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.secondary
                 )
                 Text(text = user)

@@ -11,7 +11,6 @@ fun Route.webSocketRoutes() {
     route("/ws") {
         webSocket("/meditation/{roomId}") {
             val roomId = call.parameters["roomId"] ?: return@webSocket
-            val sessionId = UUID.randomUUID().toString()
             var currentTime = 0
 
             try {
@@ -19,15 +18,17 @@ fun Route.webSocketRoutes() {
 
                 incoming.consumeEach { frame ->
                     if (frame is Frame.Text) {
-                        when (val message = frame.readText()) {
-                            "play" -> {
-                                currentTime = 0
-                                send(Frame.Text("time:0"))
+                        val message = frame.readText()
+                        when {
+                            message == "play" -> {
                                 send(Frame.Text("play"))
                             }
-                            "pause" -> send(Frame.Text("pause"))
-                            "time:$currentTime" -> {
-                                currentTime++
+                            message == "pause" -> {
+                                send(Frame.Text("pause"))
+                            }
+                            message.startsWith("time:") -> {
+                                currentTime = message.removePrefix("time:").toIntOrNull() ?: 0
+                                // Рассылаем обновленное время всем участникам
                                 send(Frame.Text("time:$currentTime"))
                             }
                         }
@@ -35,14 +36,11 @@ fun Route.webSocketRoutes() {
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-            } finally {
-                // Cleanup
             }
         }
 
         webSocket("/music/{roomId}") {
             val roomId = call.parameters["roomId"] ?: return@webSocket
-            val sessionId = UUID.randomUUID().toString()
 
             try {
                 send(Frame.Text("Welcome to music room $roomId"))
@@ -59,8 +57,6 @@ fun Route.webSocketRoutes() {
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-            } finally {
-                // Cleanup
             }
         }
     }

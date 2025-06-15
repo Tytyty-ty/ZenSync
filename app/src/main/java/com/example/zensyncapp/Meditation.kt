@@ -269,58 +269,87 @@ fun LiveMeditationScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val isPlaying by webSocketManager.isPlaying.collectAsState()
-    val currentTime by webSocketManager.currentTime.collectAsState()
+    val remainingTime by webSocketManager.remainingTime.collectAsState()
     val room by viewModel.currentRoom.collectAsState()
     var showEndDialog by remember { mutableStateOf(false) }
+    var showCompletionDialog by remember { mutableStateOf(false) }
 
+    // Инициализация комнаты
     LaunchedEffect(roomId) {
         try {
             val token = ApiClient.getAuthToken()
             webSocketManager.connectToMeditationRoom(roomId, token)
             viewModel.joinRoom(roomId)
+            room?.duration?.let { duration ->
+                webSocketManager.setInitialTime(duration)
+                webSocketManager.sendCommand("time:${duration * 60}")
+            }
         } catch (e: Exception) {
-            Toast.makeText(
-                context,
-                "Ошибка подключения: ${e.message}",
-                Toast.LENGTH_LONG
-            ).show()
+            Toast.makeText(context, "Ошибка подключения: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
+    // Обработка таймера
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
-            while (isPlaying && currentTime < (room?.duration ?: 0) * 60) {
+            while (isPlaying && remainingTime > 0) {
                 delay(1000)
-                webSocketManager.sendCommand("time:${currentTime + 1}")
+                val newTime = remainingTime - 1
+                webSocketManager.sendCommand("time:$newTime")
             }
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            webSocketManager.disconnect()
-            viewModel.leaveRoom(roomId)
+    // Проверка завершения медитации
+    LaunchedEffect(remainingTime) {
+        if (remainingTime <= 0 && isPlaying) {
+            webSocketManager.sendCommand("pause")
+            showCompletionDialog = true
         }
     }
 
+    // Управление медитацией
     fun toggleMeditation() {
         coroutineScope.launch {
             if (isPlaying) {
                 webSocketManager.sendCommand("pause")
             } else {
-                // Сбрасываем таймер при старте
-                webSocketManager.sendCommand("time:0")
-                webSocketManager.sendCommand("play")
-
-                // Запускаем таймер
-                while (isPlaying && currentTime < (room?.duration ?: 0) * 60) {
-                    delay(1000)
-                    webSocketManager.sendCommand("time:${currentTime + 1}")
+                // Если время вышло, сбрасываем таймер
+                if (remainingTime <= 0) {
+                    room?.duration?.let { duration ->
+                        webSocketManager.setInitialTime(duration)
+                        webSocketManager.sendCommand("time:${duration * 60}")
+                    }
                 }
+                webSocketManager.sendCommand("play")
             }
         }
     }
 
+    // Диалог завершения
+    if (showCompletionDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showCompletionDialog = false
+                navController.navigate("MainHub") { popUpTo(0) }
+            },
+            title = { Text("Медитация завершена!") },
+            text = { Text("Вы молодец! Сеанс прошёл отлично!") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showCompletionDialog = false
+                        navController.navigate("MainHub") { popUpTo(0) }
+                    }
+                ) {
+                    Text("OK")
+                }
+            }
+        )
+        return
+    }
+
+    // Основной интерфейс
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
             painter = painterResource(R.drawable.meditation_bg),
@@ -368,7 +397,7 @@ fun LiveMeditationScreen(
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "${currentTime / 60}:${"%02d".format(currentTime % 60)}",
+                    text = "${remainingTime / 60}:${"%02d".format(remainingTime % 60)}",
                     color = Color.White,
                     fontSize = 64.sp,
                     fontWeight = FontWeight.Light
@@ -399,17 +428,13 @@ fun LiveMeditationScreen(
                     style = MaterialTheme.typography.titleMedium
                 )
 
-                val participantsList = remember(room) {
+                val participantsList = remember(room, currentUser) {
                     val list = mutableListOf<String>()
-                    currentUser?.username?.let { username ->
-                        if (room?.creator == username) {
-                            list.add("Вы (Создатель)")
-                        } else {
-                            room?.creator?.let { list.add(it) }
-                            list.add("Вы")
-                        }
-                    } ?: run {
+                    if (room?.creator == currentUser?.username) {
+                        list.add("Вы (Создатель)")
+                    } else {
                         room?.creator?.let { list.add(it) }
+                        currentUser?.username?.let { list.add("Вы") }
                     }
                     list
                 }
@@ -423,7 +448,7 @@ fun LiveMeditationScreen(
                             Icon(
                                 Icons.Default.AccountCircle,
                                 contentDescription = "Участник",
-                                tint = if (user == "Вы") MaterialTheme.colorScheme.primary
+                                tint = if (user.startsWith("Вы")) MaterialTheme.colorScheme.primary
                                 else Color.White,
                                 modifier = Modifier.size(48.dp)
                             )

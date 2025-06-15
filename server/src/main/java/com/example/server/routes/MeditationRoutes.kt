@@ -140,37 +140,25 @@ fun Route.meditationRoutes() {
         }
 
         post("/rooms/{id}/join") {
-            val roomId = call.parameters["id"]?.toIntOrNull() ?: run {
-                call.respond(HttpStatusCode.BadRequest, "Invalid room ID")
-                return@post
-            }
+            val roomId = call.parameters["id"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
+            val userId = call.request.headers["X-User-Id"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.Unauthorized)
 
-            val userId = call.request.headers["X-User-Id"]?.toIntOrNull() ?: run {
-                call.respond(HttpStatusCode.Unauthorized, "User ID is required")
-                return@post
-            }
+            transaction {
+                // Удаляем старые участия пользователя
+                RoomParticipants.deleteWhere {
+                    (RoomParticipants.userId eq userId) and (RoomParticipants.roomType eq "meditation")
+                }
 
-            // Проверяем, не является ли пользователь уже участником
-            val alreadyParticipant = transaction {
-                RoomParticipants.select {
-                    (RoomParticipants.roomId eq roomId) and
-                            (RoomParticipants.roomType eq "meditation") and
-                            (RoomParticipants.userId eq userId)
-                }.count() > 0
-            }
-
-            if (!alreadyParticipant) {
-                transaction {
-                    RoomParticipants.insert {
-                        it[RoomParticipants.roomId] = roomId
-                        it[RoomParticipants.roomType] = "meditation"
-                        it[RoomParticipants.userId] = userId
-                        it[RoomParticipants.joinedAt] = LocalDateTime.now()
-                    }
+                // Добавляем новое участие
+                RoomParticipants.insert {
+                    it[RoomParticipants.roomId] = roomId
+                    it[RoomParticipants.roomType] = "meditation"
+                    it[RoomParticipants.userId] = userId
+                    it[RoomParticipants.joinedAt] = LocalDateTime.now()
                 }
             }
 
-            call.respond(HttpStatusCode.OK, mapOf("message" to "Joined successfully"))
+            call.respond(HttpStatusCode.OK)
         }
         post("/rooms/{id}/leave") {
             val roomId = call.parameters["id"]?.toIntOrNull() ?: run {
