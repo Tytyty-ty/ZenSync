@@ -80,6 +80,16 @@ class MainActivity : ComponentActivity() {
                     composable("CreateMeditationRoom/{goal}") { backStackEntry ->
                         val goal = backStackEntry.arguments?.getString("goal") ?: ""
                         val meditationViewModel: MeditationViewModel = viewModel()
+
+                        LaunchedEffect(meditationViewModel.navigateToRoom.value) {
+                            meditationViewModel.navigateToRoom.value?.let { roomId ->
+                                navController.navigate("LiveMeditationSession/$roomId") {
+                                    popUpTo("CreateMeditationRoom/{goal}") { inclusive = true }
+                                }
+                                meditationViewModel.onRoomNavigated()
+                            }
+                        }
+
                         CreateMeditationRoomScreen(
                             navController = navController,
                             meditationGoal = goal,

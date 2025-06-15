@@ -37,8 +37,10 @@ class WebSocketManager(private val client: HttpClient) {
     val connectionState: State<ConnectionState> = _connectionState
 
     suspend fun connectToMeditationRoom(roomId: String, authToken: String? = null) {
-        _connectionState.value = ConnectionState.CONNECTING
         try {
+            _connectionState.value = ConnectionState.CONNECTING
+            session?.close()
+
             session = client.webSocketSession {
                 url {
                     protocol = URLProtocol.WS
@@ -54,22 +56,27 @@ class WebSocketManager(private val client: HttpClient) {
             job = CoroutineScope(Dispatchers.IO).launch {
                 _connectionState.value = ConnectionState.CONNECTED
 
-                session?.incoming?.consumeAsFlow()?.collect { frame ->
-                    if (frame is Frame.Text) {
-                        val message = frame.readText()
-                        handleMessage(message)
+                try {
+                    session?.incoming?.consumeAsFlow()?.collect { frame ->
+                        if (frame is Frame.Text) {
+                            val message = frame.readText()
+                            handleMessage(message)
+                        }
                     }
+                } catch (e: Exception) {
+                    _connectionState.value = ConnectionState.ERROR(e.message ?: "Connection error")
                 }
             }
         } catch (e: Exception) {
             _connectionState.value = ConnectionState.ERROR(e.message ?: "Connection failed")
-            disconnect()
         }
     }
 
     suspend fun connectToMusicRoom(roomId: String, authToken: String? = null) {
-        _connectionState.value = ConnectionState.CONNECTING
         try {
+            _connectionState.value = ConnectionState.CONNECTING
+            session?.close()
+
             session = client.webSocketSession {
                 url {
                     protocol = URLProtocol.WS
@@ -85,16 +92,19 @@ class WebSocketManager(private val client: HttpClient) {
             job = CoroutineScope(Dispatchers.IO).launch {
                 _connectionState.value = ConnectionState.CONNECTED
 
-                session?.incoming?.consumeAsFlow()?.collect { frame ->
-                    if (frame is Frame.Text) {
-                        val message = frame.readText()
-                        handleMusicMessage(message)
+                try {
+                    session?.incoming?.consumeAsFlow()?.collect { frame ->
+                        if (frame is Frame.Text) {
+                            val message = frame.readText()
+                            handleMusicMessage(message)
+                        }
                     }
+                } catch (e: Exception) {
+                    _connectionState.value = ConnectionState.ERROR(e.message ?: "Music connection error")
                 }
             }
         } catch (e: Exception) {
-            _connectionState.value = ConnectionState.ERROR(e.message ?: "Music room connection failed")
-            disconnect()
+            _connectionState.value = ConnectionState.ERROR(e.message ?: "Music connection failed")
         }
     }
 

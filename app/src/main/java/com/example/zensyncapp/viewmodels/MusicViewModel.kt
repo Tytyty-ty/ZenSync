@@ -79,7 +79,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val response = ApiClient.httpClient.get("/api/music/rooms")
                 if (response.status == HttpStatusCode.OK) {
-                    _rooms.value = response.body()
+                    _rooms.value = response.body<List<MusicRoom>>()
                 }
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to load rooms"

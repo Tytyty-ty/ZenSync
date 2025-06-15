@@ -43,14 +43,14 @@ fun CreateMeditationRoomScreen(
     var roomName by remember { mutableStateOf("") }
     var isPublic by remember { mutableStateOf(true) }
     val context = LocalContext.current
+    val isLoading by viewModel.isLoading.collectAsState()
 
-    LaunchedEffect(viewModel.currentRoom.value) {
-        viewModel.currentRoom.value?.let { room ->
-            navController.navigate("LiveMeditationSession/${room.id}") {
-                popUpTo("CreateMeditationRoom/${meditationGoal}") {
-                    inclusive = true
-                }
+    LaunchedEffect(viewModel.navigationEvent.value) {
+        viewModel.navigationEvent.value?.let { roomId ->
+            navController.navigate("LiveMeditationSession/$roomId") {
+                popUpTo("CreateMeditationRoom/$meditationGoal") { inclusive = true }
             }
+            viewModel.onNavigationHandled()
         }
     }
 
@@ -73,11 +73,7 @@ fun CreateMeditationRoomScreen(
             value = meditationGoal,
             onValueChange = {},
             modifier = Modifier.fillMaxWidth(),
-            readOnly = true,
-            colors = OutlinedTextFieldDefaults.colors(
-                disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                disabledBorderColor = MaterialTheme.colorScheme.outline
-            )
+            readOnly = true
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -124,9 +120,14 @@ fun CreateMeditationRoomScreen(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(50.dp)
+                .height(50.dp),
+            enabled = !isLoading
         ) {
-            Text("Начать медитацию", fontSize = 18.sp)
+            if (isLoading) {
+                CircularProgressIndicator(color = Color.White)
+            } else {
+                Text("Начать медитацию", fontSize = 18.sp)
+            }
         }
     }
 }
@@ -271,7 +272,24 @@ fun LiveMeditationScreen(
     var showEndDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(roomId) {
-        viewModel.joinRoom(roomId)
+        try {
+            val token = ApiClient.getAuthToken()
+            webSocketManager.connectToMeditationRoom(roomId, token)
+            viewModel.joinRoom(roomId)
+        } catch (e: Exception) {
+            Toast.makeText(
+                context,
+                "Ошибка подключения: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+
+    DisposableEffect(Unit) {
+        onDispose {
+            webSocketManager.disconnect()
+        }
     }
 
     fun toggleMeditation() {

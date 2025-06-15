@@ -22,11 +22,25 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
     private val _currentRoom = MutableStateFlow<MeditationRoom?>(null)
     val currentRoom: StateFlow<MeditationRoom?> = _currentRoom
 
+    private val _navigateToRoom = MutableStateFlow<String?>(null)
+    val navigateToRoom: StateFlow<String?> = _navigateToRoom
+
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+
+    private val _navigationEvent = MutableStateFlow<String?>(null)
+    val navigationEvent: StateFlow<String?> = _navigationEvent
+
+    fun onNavigationHandled() {
+        _navigationEvent.value = null
+    }
+
+    fun onRoomNavigated() {
+        _navigateToRoom.value = null
+    }
 
     fun fetchRooms() {
         viewModelScope.launch {
@@ -58,6 +72,7 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                         val room = response.body<MeditationRoom>()
                         _currentRoom.value = room
                         joinRoom(room.id)
+                        _navigationEvent.value = room.id
                     }
                     else -> {
                         val errorText = response.bodyAsText()

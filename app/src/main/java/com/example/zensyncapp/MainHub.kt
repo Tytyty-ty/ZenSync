@@ -114,13 +114,6 @@ fun MeditationScreen(navController: NavController) {
     var meditationGoal by remember { mutableStateOf("") }
     var meditationNotes by remember { mutableStateOf("") }
 
-    LaunchedEffect(meditationNotes) {
-        if (meditationNotes.isNotBlank()) {
-            // Auto-save notes when changed
-            saveMeditationNotes(meditationGoal, meditationNotes)
-        }
-    }
-
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Цели медитации", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
@@ -140,7 +133,7 @@ fun MeditationScreen(navController: NavController) {
                 if (meditationGoal.isBlank()) {
                     Toast.makeText(context, "Установите цель перед медитацией", Toast.LENGTH_SHORT).show()
                 } else {
-                    navController.navigate("CreateMeditationRoom/$meditationGoal")
+                    navController.navigate("CreateMeditationRoom/${meditationGoal}")
                 }
             },
             modifier = Modifier.fillMaxWidth()
@@ -154,19 +147,6 @@ fun MeditationScreen(navController: NavController) {
         ) {
             Text("Вступить в комнату")
         }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Text("Заметки", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(
-            value = meditationNotes,
-            onValueChange = { meditationNotes = it },
-            placeholder = { Text("Запишите свои мысли и ощущения...") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(120.dp)
-        )
     }
 }
 
