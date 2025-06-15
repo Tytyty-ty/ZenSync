@@ -16,6 +16,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.count
+import org.jetbrains.exposed.sql.deleteWhere
 import java.time.LocalDateTime
 
 fun Route.meditationRoutes() {
@@ -170,6 +171,36 @@ fun Route.meditationRoutes() {
             }
 
             call.respond(HttpStatusCode.OK, mapOf("message" to "Joined successfully"))
+        }
+        post("/rooms/{id}/leave") {
+            val roomId = call.parameters["id"]?.toIntOrNull() ?: run {
+                call.respond(HttpStatusCode.BadRequest, "Invalid room ID")
+                return@post
+            }
+
+            val userId = call.request.headers["X-User-Id"]?.toIntOrNull() ?: run {
+                call.respond(HttpStatusCode.Unauthorized, "User ID is required")
+                return@post
+            }
+
+            transaction {
+                RoomParticipants.deleteWhere {
+                    (RoomParticipants.roomId eq roomId) and
+                            (RoomParticipants.roomType eq "meditation") and
+                            (RoomParticipants.userId eq userId)
+                }
+
+                // Если участников не осталось, удаляем комнату
+                val participantsCount = RoomParticipants
+                    .select { RoomParticipants.roomId eq roomId and (RoomParticipants.roomType eq "meditation") }
+                    .count()
+
+                if (participantsCount == 0L) {
+                    MeditationRooms.deleteWhere { MeditationRooms.id eq roomId }
+                }
+            }
+
+            call.respond(HttpStatusCode.OK, mapOf("message" to "Left successfully"))
         }
     }
 }

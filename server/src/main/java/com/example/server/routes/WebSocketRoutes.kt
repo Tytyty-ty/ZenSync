@@ -12,17 +12,24 @@ fun Route.webSocketRoutes() {
         webSocket("/meditation/{roomId}") {
             val roomId = call.parameters["roomId"] ?: return@webSocket
             val sessionId = UUID.randomUUID().toString()
+            var currentTime = 0
 
             try {
                 send(Frame.Text("Welcome to meditation room $roomId"))
 
                 incoming.consumeEach { frame ->
                     if (frame is Frame.Text) {
-                        val message = frame.readText()
-                        when (message) {
-                            "play" -> send(Frame.Text("play"))
+                        when (val message = frame.readText()) {
+                            "play" -> {
+                                currentTime = 0
+                                send(Frame.Text("time:0"))
+                                send(Frame.Text("play"))
+                            }
                             "pause" -> send(Frame.Text("pause"))
-                            else -> send(Frame.Text("Unknown command"))
+                            "time:$currentTime" -> {
+                                currentTime++
+                                send(Frame.Text("time:$currentTime"))
+                            }
                         }
                     }
                 }

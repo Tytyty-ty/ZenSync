@@ -253,7 +253,3 @@ fun SettingsScreen() {
         }
     }
 }
-
-private fun saveMeditationNotes(goal: String, notes: String) {
-    // TODO: Implement actual saving to database
-}

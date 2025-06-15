@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.zensyncapp.models.AuthResponse
 import com.example.zensyncapp.models.MeditationRoom
 import com.example.zensyncapp.network.WebSocketManager
 import com.example.zensyncapp.viewmodels.MeditationViewModel
@@ -262,7 +263,8 @@ fun LiveMeditationScreen(
     navController: NavController,
     roomId: String,
     viewModel: MeditationViewModel,
-    webSocketManager: WebSocketManager
+    webSocketManager: WebSocketManager,
+    currentUser: AuthResponse?
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -285,10 +287,19 @@ fun LiveMeditationScreen(
         }
     }
 
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            while (isPlaying && currentTime < (room?.duration ?: 0) * 60) {
+                delay(1000)
+                webSocketManager.sendCommand("time:${currentTime + 1}")
+            }
+        }
+    }
 
     DisposableEffect(Unit) {
         onDispose {
             webSocketManager.disconnect()
+            viewModel.leaveRoom(roomId)
         }
     }
 
@@ -297,7 +308,15 @@ fun LiveMeditationScreen(
             if (isPlaying) {
                 webSocketManager.sendCommand("pause")
             } else {
+                // Сбрасываем таймер при старте
+                webSocketManager.sendCommand("time:0")
                 webSocketManager.sendCommand("play")
+
+                // Запускаем таймер
+                while (isPlaying && currentTime < (room?.duration ?: 0) * 60) {
+                    delay(1000)
+                    webSocketManager.sendCommand("time:${currentTime + 1}")
+                }
             }
         }
     }
@@ -380,11 +399,26 @@ fun LiveMeditationScreen(
                     style = MaterialTheme.typography.titleMedium
                 )
 
+                val participantsList = remember(room) {
+                    val list = mutableListOf<String>()
+                    currentUser?.username?.let { username ->
+                        if (room?.creator == username) {
+                            list.add("Вы (Создатель)")
+                        } else {
+                            room?.creator?.let { list.add(it) }
+                            list.add("Вы")
+                        }
+                    } ?: run {
+                        room?.creator?.let { list.add(it) }
+                    }
+                    list
+                }
+
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.padding(top = 8.dp)
                 ) {
-                    items(listOf(room?.creator ?: "Создатель", "Вы")) { user ->
+                    items(participantsList) { user ->
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(
                                 Icons.Default.AccountCircle,

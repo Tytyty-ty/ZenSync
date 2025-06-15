@@ -45,6 +45,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
+
     init {
         fetchRooms()
     }
@@ -198,6 +199,19 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 _error.value = e.message ?: "Failed to join room"
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+    fun leaveRoom(roomId: String) {
+        viewModelScope.launch {
+            try {
+                ApiClient.httpClient.post("/api/meditation/rooms/$roomId/leave") {
+                    contentType(ContentType.Application.Json)
+                }
+                _currentRoom.value = null
+                WebSocketService.stopService(getApplication())
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Failed to leave room"
             }
         }
     }

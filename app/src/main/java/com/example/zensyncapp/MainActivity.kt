@@ -108,6 +108,7 @@ class MainActivity : ComponentActivity() {
                     composable("LiveMeditationSession/{roomId}") { backStackEntry ->
                         val roomId = backStackEntry.arguments?.getString("roomId") ?: ""
                         val meditationViewModel: MeditationViewModel = viewModel()
+                        val authViewModel: AuthViewModel = viewModel()
 
                         LaunchedEffect(roomId) {
                             webSocketManager.connectToMeditationRoom(roomId)
@@ -123,13 +124,14 @@ class MainActivity : ComponentActivity() {
                             navController = navController,
                             roomId = roomId,
                             viewModel = meditationViewModel,
-                            webSocketManager = webSocketManager
+                            webSocketManager = webSocketManager,
+                            currentUser = authViewModel.currentUser.value
                         )
                     }
 
                     composable("CreateMusicRoom") {
                         val musicViewModel: MusicViewModel = viewModel()
-                        CreateMusicRoomScreen( // Добавлен импорт или определение этого composable
+                        CreateMusicRoomScreen(
                             navController = navController,
                             viewModel = musicViewModel
                         )
@@ -137,15 +139,17 @@ class MainActivity : ComponentActivity() {
 
                     composable("JoinMusicRoom") {
                         val musicViewModel: MusicViewModel = viewModel()
-                        MusicRoomListScreen( // Изменено с JoinMusicRoomScreen на MusicRoomListScreen
+                        MusicRoomListScreen(
                             navController = navController,
                             viewModel = musicViewModel
                         )
                     }
 
+
                     composable("MusicRoom/{roomId}") { backStackEntry ->
                         val roomId = backStackEntry.arguments?.getString("roomId") ?: ""
                         val musicViewModel: MusicViewModel = viewModel()
+                        val authViewModel: AuthViewModel = viewModel()
 
                         LaunchedEffect(roomId) {
                             webSocketManager.connectToMusicRoom(roomId)
@@ -154,14 +158,16 @@ class MainActivity : ComponentActivity() {
                         DisposableEffect(Unit) {
                             onDispose {
                                 webSocketManager.disconnect()
+                                musicViewModel.leaveRoom(roomId)
                             }
                         }
 
                         MusicRoomDetailScreen(
                             navController = navController,
                             roomId = roomId,
+                            webSocketManager = webSocketManager,
                             viewModel = musicViewModel,
-                            webSocketManager = webSocketManager
+                            currentUser = authViewModel.currentUser.value
                         )
                     }
 

@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.zensyncapp.models.AuthResponse
 import com.example.zensyncapp.models.MusicRoom
 import com.example.zensyncapp.models.SpotifyPlaylist
 import com.example.zensyncapp.network.WebSocketManager
@@ -183,7 +184,8 @@ fun MusicRoomDetailScreen(
     navController: NavController,
     roomId: String,
     webSocketManager: WebSocketManager,
-    viewModel: MusicViewModel
+    viewModel: MusicViewModel,
+    currentUser: AuthResponse?
 ) {
     val room by viewModel.currentRoom.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -228,7 +230,8 @@ fun MusicRoomDetailScreen(
                     room = room!!,
                     isPlaying = isPlaying,
                     currentTime = currentTime,
-                    onPlayPause = { togglePlayback() }
+                    onPlayPause = { togglePlayback() },
+                    currentUser = currentUser
                 )
             }
         }
@@ -240,7 +243,8 @@ private fun MusicRoomContent(
     room: MusicRoom,
     isPlaying: Boolean,
     currentTime: Int,
-    onPlayPause: () -> Unit
+    onPlayPause: () -> Unit,
+    currentUser: AuthResponse?
 ) {
     Column(
         modifier = Modifier
@@ -256,7 +260,7 @@ private fun MusicRoomContent(
             onPlayPause = onPlayPause
         )
         Spacer(modifier = Modifier.height(24.dp))
-        ParticipantsSection(room)
+        ParticipantsSection(room, currentUser)
     }
 }
 
@@ -359,7 +363,16 @@ private fun PlayerControls(
 }
 
 @Composable
-private fun ParticipantsSection(room: MusicRoom) {
+private fun ParticipantsSection(room: MusicRoom, currentUser: AuthResponse?) {
+    val participantsList = remember(room) {
+        val list = mutableListOf<String>()
+        if (room.creator != currentUser?.username) {
+            list.add(room.creator)
+        }
+        list.add("Вы")
+        list
+    }
+
     Text(
         text = "Участники (${room.participants})",
         style = MaterialTheme.typography.titleMedium
@@ -368,7 +381,7 @@ private fun ParticipantsSection(room: MusicRoom) {
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.padding(vertical = 8.dp)
     ) {
-        items(listOf(room.creator, "Вы")) { user ->
+        items(participantsList) { user ->
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(
                     imageVector = Icons.Default.AccountCircle,
@@ -412,11 +425,20 @@ fun CreateMusicRoomScreen(
     viewModel: MusicViewModel
 ) {
     var roomName by remember { mutableStateOf("") }
-    var duration by remember { mutableStateOf(30) }
     var isPublic by remember { mutableStateOf(true) }
     val selectedPlaylist by viewModel.selectedPlaylist.collectAsState()
     val showPlaylistSelector by viewModel.showPlaylistSelector.collectAsState()
     val context = LocalContext.current
+    val navigateToRoom by viewModel.navigateToRoom.collectAsState()
+
+    LaunchedEffect(navigateToRoom) {
+        navigateToRoom?.let { roomId ->
+            viewModel.onRoomNavigated()
+            navController.navigate("MusicRoom/$roomId") {
+                popUpTo("CreateMusicRoom") { inclusive = true }
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -439,18 +461,6 @@ fun CreateMusicRoomScreen(
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("Моя музыкальная комната") }
         )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text("Длительность (мин):", style = MaterialTheme.typography.titleMedium)
-        Slider(
-            value = duration.toFloat(),
-            onValueChange = { duration = it.toInt() },
-            valueRange = 5f..120f,
-            steps = 22,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Text(text = "$duration минут", modifier = Modifier.align(Alignment.CenterHorizontally))
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -481,8 +491,7 @@ fun CreateMusicRoomScreen(
                 } else if (selectedPlaylist == null) {
                     Toast.makeText(context, "Выберите плейлист", Toast.LENGTH_SHORT).show()
                 } else {
-                    viewModel.createMusicRoom(roomName, selectedPlaylist!!, duration, isPublic)
-                    navController.popBackStack()
+                    viewModel.createMusicRoom(roomName, selectedPlaylist!!, 0, isPublic)
                 }
             },
             modifier = Modifier

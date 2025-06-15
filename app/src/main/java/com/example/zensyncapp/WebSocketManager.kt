@@ -135,8 +135,11 @@ class WebSocketManager(private val client: HttpClient) {
 
     private fun handleMessage(message: String) {
         when {
-            message.startsWith("play") -> _isPlaying.value = true
-            message.startsWith("pause") -> _isPlaying.value = false
+            message == "play" -> {
+                _isPlaying.value = true
+                _currentTime.value = 0
+            }
+            message == "pause" -> _isPlaying.value = false
             message.startsWith("time:") -> {
                 val time = message.removePrefix("time:").toIntOrNull()
                 time?.let { _currentTime.value = it }
