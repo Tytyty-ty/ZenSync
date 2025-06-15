@@ -37,7 +37,7 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                     _rooms.value = response.body()
                 }
             } catch (e: Exception) {
-                _error.value = e.message
+                _error.value = e.message ?: "Failed to fetch rooms"
             } finally {
                 _isLoading.value = false
             }
@@ -58,15 +58,14 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                         val room = response.body<MeditationRoom>()
                         _currentRoom.value = room
                         joinRoom(room.id)
-                        fetchRooms()
                     }
                     else -> {
                         val errorText = response.bodyAsText()
-                        _error.value = errorText ?: "Ошибка создания комнаты"
+                        _error.value = errorText ?: "Failed to create room"
                     }
                 }
             } catch (e: Exception) {
-                _error.value = e.message ?: "Ошибка соединения"
+                _error.value = e.message ?: "Failed to create room"
             } finally {
                 _isLoading.value = false
             }
@@ -77,15 +76,19 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val response = ApiClient.httpClient.post("/api/meditation/rooms/$roomId/join")
+                val response = ApiClient.httpClient.post("/api/meditation/rooms/$roomId/join") {
+                    contentType(ContentType.Application.Json)
+                }
 
                 when (response.status) {
                     HttpStatusCode.OK -> {
+                        // Update room details after joining
                         val roomResponse = ApiClient.httpClient.get("/api/meditation/rooms/$roomId")
                         if (roomResponse.status == HttpStatusCode.OK) {
                             _currentRoom.value = roomResponse.body()
                         }
 
+                        // Start WebSocket connection
                         val token = ApiClient.getAuthToken()
                         WebSocketService.startService(
                             getApplication(),
@@ -96,11 +99,11 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                     }
                     else -> {
                         val errorText = response.bodyAsText()
-                        _error.value = errorText ?: "Ошибка входа в комнату"
+                        _error.value = errorText ?: "Failed to join room"
                     }
                 }
             } catch (e: Exception) {
-                _error.value = e.message ?: "Ошибка соединения"
+                _error.value = e.message ?: "Failed to join room"
             } finally {
                 _isLoading.value = false
             }

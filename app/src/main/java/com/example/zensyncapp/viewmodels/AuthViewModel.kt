@@ -8,7 +8,6 @@ import com.example.zensyncapp.models.LoginRequest
 import com.example.zensyncapp.models.RegisterRequest
 import io.ktor.client.call.body
 import io.ktor.client.plugins.ClientRequestException
-import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
@@ -31,12 +30,8 @@ class AuthViewModel : ViewModel() {
     }
 
     private fun configureHttpClient(token: String?, userId: String?) {
-        ApiClient.httpClient.config {
-            defaultRequest {
-                token?.let { header(HttpHeaders.Authorization, "Bearer $it") }
-                userId?.let { header("X-User-Id", it) }
-            }
-        }
+        ApiClient.setAuthToken(token)
+        ApiClient.setUserId(userId)
     }
 
     fun register(username: String, email: String, password: String) {

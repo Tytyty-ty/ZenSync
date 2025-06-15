@@ -267,6 +267,12 @@ fun LiveMeditationScreen(
     val coroutineScope = rememberCoroutineScope()
     val isPlaying by webSocketManager.isPlaying.collectAsState()
     val currentTime by webSocketManager.currentTime.collectAsState()
+    val room by viewModel.currentRoom.collectAsState()
+    var showEndDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(roomId) {
+        viewModel.joinRoom(roomId)
+    }
 
     fun toggleMeditation() {
         coroutineScope.launch {
@@ -277,9 +283,6 @@ fun LiveMeditationScreen(
             }
         }
     }
-
-    val room by viewModel.currentRoom.collectAsState()
-    var showEndDialog by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
@@ -375,7 +378,8 @@ fun LiveMeditationScreen(
                             Text(
                                 text = user,
                                 color = Color.White,
-                                modifier = Modifier.padding(top = 4.dp))
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
                         }
                     }
                 }

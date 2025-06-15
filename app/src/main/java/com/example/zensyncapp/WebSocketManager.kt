@@ -43,7 +43,7 @@ class WebSocketManager(private val client: HttpClient) {
                 url {
                     protocol = URLProtocol.WS
                     host = "10.0.2.2"
-                    port = 8081 // Изменили порт на 8081
+                    port = 8081
                     path("ws/meditation/$roomId")
                 }
                 authToken?.let {
@@ -74,7 +74,7 @@ class WebSocketManager(private val client: HttpClient) {
                 url {
                     protocol = URLProtocol.WS
                     host = "10.0.2.2"
-                    port = 8081 // Изменили порт на 8081
+                    port = 8081
                     path("ws/music/$roomId")
                 }
                 authToken?.let {

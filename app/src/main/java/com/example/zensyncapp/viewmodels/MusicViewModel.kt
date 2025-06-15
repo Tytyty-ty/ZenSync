@@ -174,13 +174,18 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val token = ApiClient.getAuthToken()
-                WebSocketService.startService(getApplication(), roomId, "music", token)
-
                 val response = ApiClient.httpClient.post("/api/music/rooms/$roomId/join")
                 if (response.status == HttpStatusCode.OK) {
                     fetchRoomDetails(roomId)
                 }
+
+                val token = ApiClient.getAuthToken()
+                WebSocketService.startService(
+                    getApplication(),
+                    roomId,
+                    "music",
+                    token
+                )
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to join room"
             } finally {
