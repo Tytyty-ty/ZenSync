@@ -38,6 +38,9 @@ class WebSocketManager(private val client: HttpClient) {
     private val _remainingTime = MutableStateFlow(0)
     val remainingTime: StateFlow<Int> = _remainingTime
 
+    private val _timerState = MutableStateFlow(TimerState())
+    val timerState: StateFlow<TimerState> = _timerState
+
     private val _serverTime = MutableStateFlow(0)
     val serverTime: StateFlow<Int> = _serverTime
 
@@ -54,6 +57,12 @@ class WebSocketManager(private val client: HttpClient) {
         _remainingTime.value = minutes * 60
         _serverTime.value = minutes * 60
     }
+
+    data class TimerState(
+        val currentTime: Int = 0,
+        val isPlaying: Boolean = false,
+        val duration: Int = 0
+    )
 
     sealed class ConnectionState {
         object CONNECTED : ConnectionState()
@@ -233,30 +242,14 @@ class WebSocketManager(private val client: HttpClient) {
         when {
             message.startsWith("duration:") -> {
                 val duration = message.removePrefix("duration:").toIntOrNull() ?: 0
-                _roomDuration.value = duration
-                _remainingTime.value = duration
-                _serverTime.value = duration
-                CoroutineScope(Dispatchers.IO).launch {
-                    broadcast("time:$duration")
-                }
+                _timerState.value = _timerState.value.copy(duration = duration)
             }
             message == "play" -> {
-                _isPlaying.value = true
-                timerJob?.cancel()
-                timerJob = CoroutineScope(Dispatchers.IO).launch {
-                    while (_serverTime.value > 0 && _isPlaying.value) {
-                        delay(1000)
-                        _serverTime.value = _serverTime.value - 1
-                        if (_serverTime.value <= 0) {
-                            _isPlaying.value = false
-                            sendCommand("completed")
-                            break
-                        }
-                    }
-                }
+                _timerState.value = _timerState.value.copy(isPlaying = true)
+                startTimer()
             }
             message == "pause" -> {
-                _isPlaying.value = false
+                _timerState.value = _timerState.value.copy(isPlaying = false)
                 timerJob?.cancel()
             }
             message.startsWith("state:") -> {
@@ -274,7 +267,8 @@ class WebSocketManager(private val client: HttpClient) {
                 }
             }
             message.startsWith("time:") -> {
-                _serverTime.value = message.removePrefix("time:").toIntOrNull() ?: 0
+                val time = message.removePrefix("time:").toIntOrNull() ?: 0
+                _timerState.value = _timerState.value.copy(currentTime = time)
             }
             message.startsWith("participant:") -> {
                 val participant = message.removePrefix("participant:")
@@ -305,14 +299,18 @@ class WebSocketManager(private val client: HttpClient) {
     }
 
     suspend fun startMeditation(durationSeconds: Int) {
-        _serverTime.value = durationSeconds
-        _roomDuration.value = durationSeconds
+        _timerState.value = TimerState(
+            currentTime = durationSeconds,
+            duration = durationSeconds,
+            isPlaying = true
+        )
         sendCommand("duration:$durationSeconds")
         sendCommand("play")
+        startTimer()
     }
 
     suspend fun toggleMeditation() {
-        if (_isPlaying.value) {
+        if (_timerState.value.isPlaying) {
             pauseMeditation()
         } else {
             playMeditation()
@@ -321,16 +319,36 @@ class WebSocketManager(private val client: HttpClient) {
 
 
     suspend fun playMeditation() {
-        if (_serverTime.value <= 0) {
-            _serverTime.value = _roomDuration.value
+        if (_timerState.value.currentTime <= 0) {
+            _timerState.value = _timerState.value.copy(
+                currentTime = _timerState.value.duration
+            )
         }
-        _isPlaying.value = true
+        _timerState.value = _timerState.value.copy(isPlaying = true)
         sendCommand("play")
+        startTimer()
     }
 
     suspend fun pauseMeditation() {
-        _isPlaying.value = false
+        _timerState.value = _timerState.value.copy(isPlaying = false)
         sendCommand("pause")
+        timerJob?.cancel()
+    }
+
+    private fun startTimer() {
+        timerJob?.cancel()
+        timerJob = CoroutineScope(Dispatchers.IO).launch {
+            while (_timerState.value.currentTime > 0 && _timerState.value.isPlaying) {
+                delay(1000)
+                _timerState.value = _timerState.value.copy(
+                    currentTime = _timerState.value.currentTime - 1
+                )
+                if (_timerState.value.currentTime <= 0) {
+                    _timerState.value = _timerState.value.copy(isPlaying = false)
+                    sendCommand("completed")
+                }
+            }
+        }
     }
 
     fun disconnect() {

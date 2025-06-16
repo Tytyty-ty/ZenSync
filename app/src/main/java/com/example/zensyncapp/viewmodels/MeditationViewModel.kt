@@ -55,6 +55,9 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
     private val _newParticipantNotification = MutableStateFlow<String?>(null)
     val newParticipantNotification: StateFlow<String?> = _newParticipantNotification
 
+    private val _showCompletionDialog = MutableStateFlow(false)
+    val showCompletionDialog: StateFlow<Boolean> = _showCompletionDialog
+
     private var webSocketManager: WebSocketManager? = null
 
     fun setWebSocketManager(manager: WebSocketManager) {
@@ -86,12 +89,15 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
         refreshJob?.cancel()
     }
 
-    fun setupWebSocketListeners(webSocketManager: WebSocketManager) {
+    private fun setupWebSocketListeners(webSocketManager: WebSocketManager) {
         viewModelScope.launch {
-            webSocketManager.participantUpdates.collect { participants ->
-                _roomParticipants.value = participants
-                _currentRoom.value?.let { currentRoom ->
-                    _currentRoom.value = currentRoom.copy(participants = participants.size)
+            webSocketManager.timerState.collect { timerState ->
+                _showTimerControls.value = true
+                _timerText.value = formatTime(timerState.currentTime)
+
+                if (timerState.currentTime <= 0 && timerState.isPlaying) {
+                    webSocketManager.pauseMeditation()
+                    _showCompletionDialog.value = true
                 }
             }
         }
@@ -122,6 +128,9 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun dismissCompletionDialog() {
+        _showCompletionDialog.value = false
+    }
     fun onNavigationHandled() {
         _navigationEvent.value = null
     }

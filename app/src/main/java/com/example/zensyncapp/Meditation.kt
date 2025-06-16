@@ -252,7 +252,6 @@ fun LiveMeditationScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val isPlaying by webSocketManager.isPlaying.collectAsState()
-    val timerText by viewModel.timerText.collectAsState()
     val room by viewModel.currentRoom.collectAsState()
     var showEndDialog by remember { mutableStateOf(false) }
     var showCompletionDialog by remember { mutableStateOf(false) }
@@ -268,6 +267,15 @@ fun LiveMeditationScreen(
             }
         }
         list.map { if (it == currentUser?.username) "Вы" else it }
+    }
+
+    val timerState by webSocketManager.timerState.collectAsState()
+    val timerText by remember {
+        derivedStateOf {
+            val minutes = timerState.currentTime / 60
+            val seconds = timerState.currentTime % 60
+            String.format("%d:%02d", minutes, seconds)
+        }
     }
 
     fun toggleMeditation() {

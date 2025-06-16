@@ -183,30 +183,34 @@ class MeditationRoomData {
     }
 
     suspend fun handlePlayCommand() {
-        if (!isPlaying && currentTime <= 0) {
-            currentTime = duration
-        }
-        isPlaying = true
-        timerJob?.cancel()
-        timerJob = CoroutineScope(Dispatchers.IO).launch {
-            while (currentTime > 0 && isPlaying) {
-                delay(1000)
-                currentTime--
-                broadcast("time:$currentTime")
-                if (currentTime <= 0) {
-                    broadcast("completed")
-                    isPlaying = false
-                    break
+        if (!isPlaying) {
+            if (currentTime <= 0) {
+                currentTime = duration
+            }
+            isPlaying = true
+            timerJob?.cancel()
+            timerJob = CoroutineScope(Dispatchers.IO).launch {
+                while (currentTime > 0 && isPlaying) {
+                    delay(1000)
+                    currentTime--
+                    broadcast("time:$currentTime")
+                    if (currentTime <= 0) {
+                        broadcast("completed")
+                        isPlaying = false
+                        break
+                    }
                 }
             }
+            broadcast("play")
         }
-        broadcast("play")
     }
 
     suspend fun handlePauseCommand() {
-        isPlaying = false
-        timerJob?.cancel()
-        broadcast("pause")
+        if (isPlaying) {
+            isPlaying = false
+            timerJob?.cancel()
+            broadcast("pause")
+        }
     }
 }
 
