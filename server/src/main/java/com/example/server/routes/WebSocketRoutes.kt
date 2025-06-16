@@ -1,7 +1,6 @@
 package com.example.zensyncserver.routes
 
 import com.example.zensyncserver.MeditationRooms
-import io.ktor.server.application.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
@@ -14,7 +13,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.transactions.transaction
-import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
 fun Route.webSocketRoutes() {

@@ -3,9 +3,8 @@ package com.example.zensyncserver
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.javatime.datetime
-import org.jetbrains.exposed.sql.javatime.timestamp
 import org.jetbrains.exposed.sql.transactions.transaction
-import java.time.LocalDateTime
+
 
 object DatabaseFactory {
     fun init() {

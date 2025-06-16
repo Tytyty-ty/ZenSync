@@ -16,7 +16,6 @@ import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.and
-import org.jetbrains.exposed.sql.count
 import org.jetbrains.exposed.sql.deleteWhere
 import java.time.LocalDateTime
 

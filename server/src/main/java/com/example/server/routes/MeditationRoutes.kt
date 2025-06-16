@@ -16,7 +16,6 @@ import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.JoinType
-import org.jetbrains.exposed.sql.leftJoin
 import org.jetbrains.exposed.sql.update
 import java.time.LocalDateTime
 

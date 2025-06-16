@@ -72,10 +72,10 @@ fun main() {
 
         DatabaseFactory.init()
 
-        // Запускаем фоновую задачу для очистки пустых комнат
+
         CoroutineScope(Dispatchers.IO).launch {
             while (true) {
-                delay(TimeUnit.MINUTES.toMillis(5)) // Проверка каждые 5 минут
+                delay(TimeUnit.MINUTES.toMillis(5))
                 cleanupEmptyRooms()
             }
         }
