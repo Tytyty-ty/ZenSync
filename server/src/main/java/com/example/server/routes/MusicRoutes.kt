@@ -193,44 +193,89 @@ fun Route.musicRoutes() {
                 return@post
             }
 
-            transaction {
+            val deleted = transaction {
+                // 1. Удаляем участника
                 RoomParticipants.deleteWhere {
                     (RoomParticipants.roomId eq roomId) and
                             (RoomParticipants.roomType eq "music") and
                             (RoomParticipants.userId eq userId)
                 }
 
-                // Если участников не осталось, удаляем комнату
+                // 2. Проверяем, остались ли участники
                 val participantsCount = RoomParticipants
-                    .select { RoomParticipants.roomId eq roomId and (RoomParticipants.roomType eq "music") }
+                    .select {
+                        (RoomParticipants.roomId eq roomId) and
+                                (RoomParticipants.roomType eq "music")
+                    }
                     .count()
 
+                // 3. Если участников нет - удаляем комнату
                 if (participantsCount == 0L) {
-                    MusicRooms.deleteWhere { MusicRooms.id eq roomId }
-                }
+                    MusicRooms.deleteWhere { MusicRooms.id eq roomId } > 0
+                } else false
             }
 
-            call.respond(HttpStatusCode.OK, mapOf("message" to "Left successfully"))
+            if (deleted) {
+                println("Successfully deleted music room $roomId (no participants left)")
+            }
+
+            call.respond(HttpStatusCode.OK, mapOf(
+                "message" to "Left successfully",
+                "room_deleted" to deleted
+            ))
         }
 
         delete("/rooms/cleanup") {
-            val deletedCount = transaction {
-                // Находим ID комнат без участников
-                val roomsToDelete = (MusicRooms leftJoin RoomParticipants)
-                    .slice(MusicRooms.id)
+            val result = transaction {
+                // 1. Получаем все музыкальные комнаты
+                val allMusicRooms = MusicRooms.selectAll().map { it[MusicRooms.id].value }
+
+                if (allMusicRooms.isEmpty()) return@transaction emptyList<Int>()
+
+                // 2. Находим комнаты с участниками
+                val roomsWithParticipants = RoomParticipants
+                    .slice(RoomParticipants.roomId)
                     .select {
-                        (RoomParticipants.roomId.isNull()) and
+                        (RoomParticipants.roomId inList allMusicRooms) and
                                 (RoomParticipants.roomType eq "music")
                     }
-                    .map { it[MusicRooms.id].value }
+                    .map { it[RoomParticipants.roomId] }
+                    .distinct()
 
-                // Удаляем комнаты по одной
-                roomsToDelete.sumOf { roomId ->
-                    MusicRooms.deleteWhere { MusicRooms.id eq roomId }
+                // 3. Определяем пустые комнаты
+                val emptyRooms = allMusicRooms - roomsWithParticipants
+
+                // 4. Удаляем пустые комнаты и собираем ID
+                emptyRooms.mapNotNull { roomId ->
+                    if (MusicRooms.deleteWhere { MusicRooms.id eq roomId } > 0) {
+                        roomId
+                    } else null
                 }
             }
 
-            call.respond(HttpStatusCode.OK, mapOf("deleted" to deletedCount))
+            println("Deleted ${result.size} empty music rooms: ${result.joinToString()}")
+            call.respond(HttpStatusCode.OK, mapOf(
+                "deleted_count" to result.size,
+                "deleted_room_ids" to result
+            ))
+        }
+
+        get("/rooms/debug") {
+            val debugInfo = transaction {
+                val allRooms = MusicRooms.selectAll().count()
+                val withParticipants = RoomParticipants
+                    .slice(RoomParticipants.roomId)
+                    .select { RoomParticipants.roomType eq "music" }
+                    .distinctBy { it[RoomParticipants.roomId] }
+                    .count()
+
+                mapOf(
+                    "total_rooms" to allRooms,
+                    "rooms_with_participants" to withParticipants,
+                    "empty_rooms" to (allRooms - withParticipants)
+                )
+            }
+            call.respond(debugInfo)
         }
     }
 }

@@ -109,6 +109,8 @@ class MainActivity : ComponentActivity() {
                                 userId = currentUser?.userId,
                                 username = currentUser?.username
                             )
+                            // Устанавливаем WebSocketManager в ViewModel
+                            meditationViewModel.setWebSocketManager(webSocketManager)
                         }
 
                         DisposableEffect(Unit) {

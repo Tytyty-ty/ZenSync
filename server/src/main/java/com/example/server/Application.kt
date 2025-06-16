@@ -35,6 +35,15 @@ fun main() {
             maxFrameSize = Long.MAX_VALUE
             masking = false
         }
+        CoroutineScope(Dispatchers.IO).launch {
+            cleanupEmptyRooms()
+            cleanupEmptyMusicRooms()
+            while (true) {
+                delay(TimeUnit.MINUTES.toMillis(2)) // И каждые 2 минут
+                cleanupEmptyRooms()
+                cleanupEmptyMusicRooms()
+            }
+        }
 
         install(CallLogging) {
             level = Level.INFO
@@ -88,37 +97,65 @@ fun main() {
 suspend fun cleanupEmptyRooms() {
     try {
         transaction {
-            // Очищаем медитационные комнаты без участников
-            val emptyMeditationRooms = MeditationRooms
-                .leftJoin(RoomParticipants, { MeditationRooms.id }, { RoomParticipants.roomId })
-                .slice(MeditationRooms.id)
+            // Очистка медитационных комнат
+            val meditationRooms = MeditationRooms.selectAll().map { it[MeditationRooms.id].value }
+            val meditationWithParticipants = RoomParticipants
                 .select {
-                    (RoomParticipants.roomId.isNull()) and
+                    (RoomParticipants.roomId inList meditationRooms) and
                             (RoomParticipants.roomType eq "meditation")
                 }
-                .map { it[MeditationRooms.id].value }
+                .map { it[RoomParticipants.roomId] }
+                .distinct()
 
-            emptyMeditationRooms.forEach { roomId ->
+            (meditationRooms - meditationWithParticipants).forEach { roomId ->
                 MeditationRooms.deleteWhere { MeditationRooms.id eq roomId }
                 println("Deleted empty meditation room: $roomId")
             }
 
-            // Очищаем музыкальные комнаты без участников
-            val emptyMusicRooms = MusicRooms
-                .leftJoin(RoomParticipants, { MusicRooms.id }, { RoomParticipants.roomId })
-                .slice(MusicRooms.id)
+            // Очистка музыкальных комнат
+            val musicRooms = MusicRooms.selectAll().map { it[MusicRooms.id].value }
+            val musicWithParticipants = RoomParticipants
                 .select {
-                    (RoomParticipants.roomId.isNull()) and
+                    (RoomParticipants.roomId inList musicRooms) and
                             (RoomParticipants.roomType eq "music")
                 }
-                .map { it[MusicRooms.id].value }
+                .map { it[RoomParticipants.roomId] }
+                .distinct()
 
-            emptyMusicRooms.forEach { roomId ->
+            (musicRooms - musicWithParticipants).forEach { roomId ->
                 MusicRooms.deleteWhere { MusicRooms.id eq roomId }
                 println("Deleted empty music room: $roomId")
             }
         }
     } catch (e: Exception) {
         println("Error during room cleanup: ${e.message}")
+    }
+}
+
+suspend fun cleanupEmptyMusicRooms() {
+    try {
+        val deleted = transaction {
+            // Альтернативный способ поиска пустых комнат
+            val emptyRooms = MusicRooms
+                .leftJoin(RoomParticipants,
+                    onColumn = { MusicRooms.id },
+                    otherColumn = { RoomParticipants.roomId },
+                    additionalConstraint = { RoomParticipants.roomType eq "music" })
+                .slice(MusicRooms.id)
+                .select {
+                    RoomParticipants.roomId.isNull()
+                }
+                .map { it[MusicRooms.id].value }
+
+            emptyRooms.sumOf { roomId ->
+                MusicRooms.deleteWhere { MusicRooms.id eq roomId }
+            }
+        }
+
+        if (deleted > 0) {
+            println("Background cleanup deleted $deleted empty music rooms")
+        }
+    } catch (e: Exception) {
+        println("Error in music room cleanup: ${e.message}")
     }
 }

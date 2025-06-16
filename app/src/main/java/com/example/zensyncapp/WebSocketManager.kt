@@ -92,7 +92,6 @@ class WebSocketManager(private val client: HttpClient) {
             job = CoroutineScope(Dispatchers.IO).launch {
                 _connectionState.value = ConnectionState.CONNECTED
 
-                // Launch a separate coroutine to handle incoming messages
                 launch {
                     try {
                         session?.incoming?.consumeAsFlow()?.collect { frame ->
@@ -106,7 +105,6 @@ class WebSocketManager(private val client: HttpClient) {
                     }
                 }
 
-                // Process messages from the channel
                 launch {
                     for (message in messageChannel) {
                         handleMessage(message)
@@ -114,7 +112,6 @@ class WebSocketManager(private val client: HttpClient) {
                 }
             }
 
-            // Start timer for periodic updates
             timerJob = CoroutineScope(Dispatchers.IO).launch {
                 while (true) {
                     delay(1000)
@@ -194,6 +191,10 @@ class WebSocketManager(private val client: HttpClient) {
                 val progress = message.removePrefix("progress:").toIntOrNull()
                 progress?.let { _currentTime.value = it }
             }
+            message.startsWith("participants:") -> {
+                val participants = message.removePrefix("participants:").split(",")
+                _participantUpdates.value = participants
+            }
             else -> _messages.add(message)
         }
     }
@@ -215,10 +216,16 @@ class WebSocketManager(private val client: HttpClient) {
                 val participants = message.removePrefix("participants:").split(",")
                 _participantUpdates.value = participants
             }
+            message.startsWith("duration:") -> {
+                val duration = message.removePrefix("duration:").toIntOrNull() ?: 0
+                _roomDuration.value = duration
+                _serverTime.value = duration
+                _remainingTime.value = duration
+            }
             message.startsWith("time:") -> {
                 val time = message.removePrefix("time:").toIntOrNull() ?: 0
-                _remainingTime.value = time
                 _serverTime.value = time
+                _remainingTime.value = time
             }
             message.startsWith("participant:") -> {
                 val participant = message.removePrefix("participant:")
@@ -252,6 +259,7 @@ class WebSocketManager(private val client: HttpClient) {
         _remainingTime.value = 0
         _serverTime.value = 0
     }
+
     suspend fun requestParticipantsUpdate() {
         sendCommand("get_participants")
     }

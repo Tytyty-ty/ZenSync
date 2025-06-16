@@ -181,10 +181,11 @@ fun MusicRoomDetailScreen(
     val context = LocalContext.current
     val isPlaying by webSocketManager.isPlaying.collectAsState()
     val currentTime by webSocketManager.currentTime.collectAsState()
-
+    val participants by viewModel.roomParticipants.collectAsState()
 
     LaunchedEffect(Unit) {
         webSocketManager.sendCommand("get_participants")
+        viewModel.setupWebSocketListeners(webSocketManager)
     }
 
     LaunchedEffect(roomId) {
@@ -225,7 +226,8 @@ fun MusicRoomDetailScreen(
                     isPlaying = isPlaying,
                     currentTime = currentTime,
                     onPlayPause = { togglePlayback() },
-                    currentUser = currentUser
+                    currentUser = currentUser,
+                    participants = participants
                 )
             }
         }
@@ -238,8 +240,17 @@ private fun MusicRoomContent(
     isPlaying: Boolean,
     currentTime: Int,
     onPlayPause: () -> Unit,
-    currentUser: AuthResponse?
+    currentUser: AuthResponse?,
+    participants: List<String>
 ) {
+    val participantsList = remember(participants, currentUser) {
+        val list = participants.toMutableList()
+        if (currentUser?.username != null && !list.contains(currentUser.username)) {
+            list.add(currentUser.username)
+        }
+        list.map { if (it == currentUser?.username) "Вы" else it }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -254,7 +265,7 @@ private fun MusicRoomContent(
             onPlayPause = onPlayPause
         )
         Spacer(modifier = Modifier.height(24.dp))
-        ParticipantsSection(room, currentUser)
+        ParticipantsSection(participants = participantsList)
     }
 }
 
@@ -357,33 +368,22 @@ private fun PlayerControls(
 }
 
 @Composable
-private fun ParticipantsSection(room: MusicRoom, currentUser: AuthResponse?) {
-    val participantsList = remember(room, currentUser) {
-        val list = mutableListOf<String>()
-        if (room.creator == currentUser?.username) {
-            list.add("Вы (Создатель)")
-        } else {
-            list.add(room.creator)
-            currentUser?.username?.let { list.add("Вы") }
-        }
-        list
-    }
-
+private fun ParticipantsSection(participants: List<String>) {
     Text(
-        text = "Участники (${room.participants})",
+        text = "Участники (${participants.size})",
         style = MaterialTheme.typography.titleMedium
     )
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.padding(vertical = 8.dp)
     ) {
-        items(participantsList) { user ->
+        items(participants) { user ->
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(
                     imageVector = Icons.Default.AccountCircle,
                     contentDescription = null,
                     modifier = Modifier.size(48.dp),
-                    tint = if (user.startsWith("Вы")) MaterialTheme.colorScheme.primary
+                    tint = if (user == "Вы") MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.secondary
                 )
                 Text(text = user)

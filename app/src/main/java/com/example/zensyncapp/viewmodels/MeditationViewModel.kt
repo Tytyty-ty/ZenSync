@@ -40,8 +40,18 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
     private val _roomParticipants = MutableStateFlow<List<String>>(emptyList())
     val roomParticipants: StateFlow<List<String>> = _roomParticipants
 
-    private val _refreshInterval = MutableStateFlow(5000L) // 5 секунд
+    private val _refreshInterval = MutableStateFlow(5000L)
     private var refreshJob: Job? = null
+
+    private val _showTimerControls = MutableStateFlow(false)
+    val showTimerControls: StateFlow<Boolean> = _showTimerControls
+
+    private var webSocketManager: WebSocketManager? = null
+
+    fun setWebSocketManager(manager: WebSocketManager) {
+        webSocketManager = manager
+    }
+
 
     init {
         startAutoRefresh()
@@ -76,7 +86,14 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                 }
             }
         }
+
+        viewModelScope.launch {
+            webSocketManager.isPlaying.collect { isPlaying ->
+                _showTimerControls.value = isPlaying
+            }
+        }
     }
+
     fun onNavigationHandled() {
         _navigationEvent.value = null
     }
@@ -166,14 +183,31 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    // MeditationViewModel.kt
+    fun startMeditation(roomId: String, duration: Int) {
+        viewModelScope.launch {
+            try {
+                val response = ApiClient.httpClient.post("/api/meditation/rooms/$roomId/start") {
+                    contentType(ContentType.Application.Json)
+                    setBody(duration)
+                }
+                if (response.status == HttpStatusCode.OK) {
+                    _showTimerControls.value = true
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Failed to start meditation"
+            }
+        }
+    }
+
     fun cleanupOldRooms() {
         viewModelScope.launch {
             try {
-                ApiClient.httpClient.delete("/api/meditation/rooms/cleanup")
-                fetchRooms() // Обновляем список комнат после очистки
+                val response = ApiClient.httpClient.delete("/api/meditation/rooms/cleanup")
+                if (response.status == HttpStatusCode.OK) {
+                    fetchRooms() // Обновляем список комнат после очистки
+                }
             } catch (e: Exception) {
-                _error.value = "Failed to cleanup rooms"
+                _error.value = "Failed to cleanup rooms: ${e.message}"
             }
         }
     }
@@ -186,9 +220,30 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 _currentRoom.value = null
                 WebSocketService.stopService(getApplication())
-                fetchRooms() // Обновляем список комнат
+                fetchRooms()
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to leave room"
+            }
+        }
+    }
+    fun startMeditation(roomId: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                // Получаем текущую комнату
+                val roomResponse = ApiClient.httpClient.get("/api/meditation/rooms/$roomId")
+                if (roomResponse.status == HttpStatusCode.OK) {
+                    val room = roomResponse.body<MeditationRoom>()
+                    // Отправляем команду на сервер для старта медитации
+                    webSocketManager?.sendCommand("duration:${room.duration * 60}")
+                    webSocketManager?.sendCommand("time:${room.duration * 60}")
+                    webSocketManager?.sendCommand("play")
+                    _showTimerControls.value = true
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Failed to start meditation"
+            } finally {
+                _isLoading.value = false
             }
         }
     }

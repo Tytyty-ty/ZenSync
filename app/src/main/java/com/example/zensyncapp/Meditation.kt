@@ -28,6 +28,9 @@ import com.example.zensyncapp.models.AuthResponse
 import com.example.zensyncapp.models.MeditationRoom
 import com.example.zensyncapp.network.WebSocketManager
 import com.example.zensyncapp.viewmodels.MeditationViewModel
+import io.ktor.client.call.body
+import io.ktor.client.request.get
+import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.launch
 
 @SuppressLint("StateFlowValueCalledInComposition")
@@ -250,6 +253,8 @@ fun LiveMeditationScreen(
     var showEndDialog by remember { mutableStateOf(false) }
     var showCompletionDialog by remember { mutableStateOf(false) }
     val participants by viewModel.roomParticipants.collectAsState()
+    val showTimerControls by viewModel.showTimerControls.collectAsState()
+
     val participantsList = remember(participants, currentUser) {
         val list = participants.toMutableList()
         if (currentUser?.username != null && !list.contains(currentUser.username)) {
@@ -257,12 +262,18 @@ fun LiveMeditationScreen(
         }
         list.map { if (it == currentUser?.username) "Вы" else it }
     }
+
     val minutes = (serverTime / 60).coerceAtLeast(0)
     val seconds = (serverTime % 60).coerceAtLeast(0)
+
     LaunchedEffect(Unit) {
         webSocketManager.sendCommand("get_participants")
         webSocketManager.requestParticipantsUpdate()
         viewModel.setupWebSocketListeners(webSocketManager)
+    }
+
+    LaunchedEffect(webSocketManager) {
+        viewModel.setWebSocketManager(webSocketManager)
     }
 
     LaunchedEffect(roomId) {
@@ -273,17 +284,18 @@ fun LiveMeditationScreen(
             webSocketManager.connectToMeditationRoom(roomId, token, userId, username)
             viewModel.joinRoom(roomId)
 
-            // Устанавливаем начальное время
-            room?.duration?.let { duration ->
-                webSocketManager.sendCommand("duration:${duration * 60}")
-                webSocketManager.sendCommand("time:${duration * 60}")
+            // Загружаем текущее состояние комнаты
+            val roomResponse = ApiClient.httpClient.get("/api/meditation/rooms/$roomId")
+            if (roomResponse.status == HttpStatusCode.OK) {
+                val room = roomResponse.body<MeditationRoom>()
+                // Обновляем состояние через метод ViewModel
+                viewModel.startMeditation(roomId)
             }
         } catch (e: Exception) {
             Toast.makeText(context, "Ошибка подключения: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
-    // Обработка завершения медитации
     LaunchedEffect(serverTime) {
         if (serverTime <= 0 && isPlaying) {
             webSocketManager.sendCommand("pause")
@@ -291,7 +303,6 @@ fun LiveMeditationScreen(
         }
     }
 
-    // Управление медитацией
     fun toggleMeditation() {
         coroutineScope.launch {
             if (isPlaying) {
@@ -308,7 +319,6 @@ fun LiveMeditationScreen(
         }
     }
 
-    // Диалог завершения
     if (showCompletionDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -329,7 +339,6 @@ fun LiveMeditationScreen(
         return
     }
 
-    // Основной интерфейс
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
             painter = painterResource(R.drawable.meditation_bg),
@@ -385,16 +394,29 @@ fun LiveMeditationScreen(
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                IconButton(
-                    onClick = { toggleMeditation() },
-                    modifier = Modifier.size(80.dp)
-                ) {
-                    Icon(
-                        if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Пауза" else "Старт",
-                        tint = Color.White,
-                        modifier = Modifier.size(64.dp)
-                    )
+                if (showTimerControls) {
+                    IconButton(
+                        onClick = { toggleMeditation() },
+                        modifier = Modifier.size(80.dp)
+                    ) {
+                        Icon(
+                            if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isPlaying) "Пауза" else "Старт",
+                            tint = Color.White,
+                            modifier = Modifier.size(64.dp)
+                        )
+                    }
+                } else {
+                    Button(
+                        onClick = {
+                            room?.duration?.let { duration ->
+                                viewModel.startMeditation(roomId, duration)
+                            }
+                        },
+                        modifier = Modifier.width(200.dp)
+                    ) {
+                        Text("Начать медитацию")
+                    }
                 }
             }
 
@@ -403,21 +425,10 @@ fun LiveMeditationScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Участники: ${room?.participants ?: 1}",
+                    text = "Участники: ${participantsList.size}",
                     color = Color.White,
                     style = MaterialTheme.typography.titleMedium
                 )
-
-                val participantsList = remember(room, currentUser) {
-                    val list = mutableListOf<String>()
-                    if (room?.creator == currentUser?.username) {
-                        list.add("Вы (Создатель)")
-                    } else {
-                        room?.creator?.let { list.add(it) }
-                        currentUser?.username?.let { list.add("Вы") }
-                    }
-                    list
-                }
 
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -428,7 +439,7 @@ fun LiveMeditationScreen(
                             Icon(
                                 Icons.Default.AccountCircle,
                                 contentDescription = "Участник",
-                                tint = if (user.startsWith("Вы")) MaterialTheme.colorScheme.primary
+                                tint = if (user == "Вы") MaterialTheme.colorScheme.primary
                                 else Color.White,
                                 modifier = Modifier.size(48.dp)
                             )

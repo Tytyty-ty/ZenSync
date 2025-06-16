@@ -16,8 +16,8 @@ import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.JoinType
-import org.jetbrains.exposed.sql.count
 import org.jetbrains.exposed.sql.leftJoin
+import org.jetbrains.exposed.sql.update
 import java.time.LocalDateTime
 
 fun Route.meditationRoutes() {
@@ -140,17 +140,36 @@ fun Route.meditationRoutes() {
                 ?: call.respond(HttpStatusCode.NotFound, "Room not found")
         }
 
+        post("/rooms/{id}/start") {
+            val roomId = call.parameters["id"]?.toIntOrNull() ?: run {
+                call.respond(HttpStatusCode.BadRequest, "Invalid room ID")
+                return@post
+            }
+
+            val duration = transaction {
+                MeditationRooms.select { MeditationRooms.id eq roomId }
+                    .singleOrNull()
+                    ?.get(MeditationRooms.durationMinutes)
+            } ?: run {
+                call.respond(HttpStatusCode.NotFound, "Room not found")
+                return@post
+            }
+
+            call.respond(HttpStatusCode.OK, mapOf(
+                "duration" to duration,
+                "message" to "Meditation started"
+            ))
+        }
+
         post("/rooms/{id}/join") {
             val roomId = call.parameters["id"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.BadRequest)
             val userId = call.request.headers["X-User-Id"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.Unauthorized)
 
             transaction {
-                // Удаляем старые участия пользователя
                 RoomParticipants.deleteWhere {
                     (RoomParticipants.userId eq userId) and (RoomParticipants.roomType eq "meditation")
                 }
 
-                // Добавляем новое участие
                 RoomParticipants.insert {
                     it[RoomParticipants.roomId] = roomId
                     it[RoomParticipants.roomType] = "meditation"
@@ -160,6 +179,23 @@ fun Route.meditationRoutes() {
             }
 
             call.respond(HttpStatusCode.OK)
+        }
+
+        post("/rooms/{id}/start") {
+            val roomId = call.parameters["id"]?.toIntOrNull() ?: run {
+                call.respond(HttpStatusCode.BadRequest, "Invalid room ID")
+                return@post
+            }
+
+            val duration = call.receive<Int>()
+
+            transaction {
+                MeditationRooms.update({ MeditationRooms.id eq roomId }) {
+                    it[MeditationRooms.durationMinutes] = duration
+                }
+            }
+
+            call.respond(HttpStatusCode.OK, mapOf("message" to "Meditation started"))
         }
 
         post("/rooms/{id}/leave") {
@@ -180,7 +216,6 @@ fun Route.meditationRoutes() {
                             (RoomParticipants.userId eq userId)
                 }
 
-                // Если участников не осталось, удаляем комнату
                 val participantsCount = RoomParticipants
                     .select { RoomParticipants.roomId eq roomId and (RoomParticipants.roomType eq "meditation") }
                     .count()
@@ -192,26 +227,38 @@ fun Route.meditationRoutes() {
 
             call.respond(HttpStatusCode.OK, mapOf("message" to "Left successfully"))
         }
+
         delete("/rooms/cleanup") {
-            val deletedCount = transaction {
-                // Находим ID комнат без участников
-                val roomsToDelete = MeditationRooms
-                    .leftJoin(RoomParticipants, { MeditationRooms.id }, { RoomParticipants.roomId })
-                    .slice(MeditationRooms.id)
+            val (deletedCount, deletedIds) = transaction {
+                val allRooms = MeditationRooms.selectAll().map { it[MeditationRooms.id].value }
+
+                if (allRooms.isEmpty()) {
+                    return@transaction Pair(0, emptyList<Int>())
+                }
+
+                val roomsWithParticipants = RoomParticipants
                     .select {
-                        (RoomParticipants.roomId.isNull()) and
+                        (RoomParticipants.roomId inList allRooms) and
                                 (RoomParticipants.roomType eq "meditation")
                     }
-                    .map { it[MeditationRooms.id].value }
+                    .map { it[RoomParticipants.roomId] }
+                    .distinct()
 
-                // Удаляем комнаты по одной (альтернатива inList)
-                roomsToDelete.sumOf { roomId ->
-                    MeditationRooms.deleteWhere { MeditationRooms.id eq roomId }
+                val emptyRooms = allRooms - roomsWithParticipants
+
+                val deletedIds = emptyRooms.mapNotNull { roomId ->
+                    val deleted = MeditationRooms.deleteWhere { MeditationRooms.id eq roomId }
+                    if (deleted > 0) roomId else null
                 }
+
+                Pair(deletedIds.size, deletedIds)
             }
 
-            call.respond(HttpStatusCode.OK, mapOf("deleted" to deletedCount))
+            println("Deleted ${deletedCount} meditation rooms: ${deletedIds.joinToString()}")
+            call.respond(HttpStatusCode.OK, mapOf(
+                "deleted" to deletedCount,
+                "room_ids" to deletedIds
+            ))
         }
-
     }
 }

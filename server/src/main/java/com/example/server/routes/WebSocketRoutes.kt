@@ -1,5 +1,6 @@
 package com.example.zensyncserver.routes
 
+import com.example.zensyncserver.MeditationRooms
 import io.ktor.server.application.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
@@ -9,6 +10,8 @@ import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.transactions.transaction
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
@@ -22,13 +25,25 @@ fun Route.webSocketRoutes() {
 
             // Инициализируем данные комнаты, если их нет
             val roomData = meditationRooms.getOrPut(roomId) {
-                MeditationRoomData()
+                MeditationRoomData().apply {
+                    // Загружаем продолжительность комнаты из базы данных
+                    transaction {
+                        MeditationRooms.select { MeditationRooms.id eq roomId.toInt() }
+                            .singleOrNull()
+                            ?.get(MeditationRooms.durationMinutes)
+                            ?.let { duration ->
+                                this@apply.duration = duration * 60
+                                this@apply.currentTime = duration * 60
+                            }
+                    }
+                }
             }
 
             try {
                 roomData.connections[session.hashCode().toString()] = session
 
                 // Отправляем текущее состояние новому участнику
+                session.send(Frame.Text("duration:${roomData.duration}"))
                 session.send(Frame.Text("time:${roomData.currentTime}"))
                 session.send(Frame.Text(if (roomData.isPlaying) "play" else "pause"))
 

@@ -11,11 +11,14 @@ import com.example.zensyncapp.WebSocketService
 import com.example.zensyncapp.models.CreateMusicRoomRequest
 import com.example.zensyncapp.models.MusicRoom
 import com.example.zensyncapp.models.SpotifyPlaylist
+import com.example.zensyncapp.network.WebSocketManager
 import com.example.zensyncapp.spotify.SpotifyManager
 import io.ktor.client.call.body
 import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -45,9 +48,39 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
+    private val _navigateToRoom = MutableStateFlow<String?>(null)
+    val navigateToRoom: StateFlow<String?> = _navigateToRoom
+
+    private val _roomParticipants = MutableStateFlow<List<String>>(emptyList())
+    val roomParticipants: StateFlow<List<String>> = _roomParticipants
+
+    private val _refreshInterval = MutableStateFlow(5000L)
+    private var refreshJob: Job? = null
 
     init {
         fetchRooms()
+        startAutoRefresh()
+    }
+
+    private fun startAutoRefresh() {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            while (true) {
+                delay(_refreshInterval.value)
+                fetchRooms()
+            }
+        }
+    }
+
+    fun setupWebSocketListeners(webSocketManager: WebSocketManager) {
+        viewModelScope.launch {
+            webSocketManager.participantUpdates.collect { participants ->
+                _roomParticipants.value = participants
+                _currentRoom.value?.let { currentRoom ->
+                    _currentRoom.value = currentRoom.copy(participants = participants.size)
+                }
+            }
+        }
     }
 
     fun clearError() {
@@ -125,7 +158,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                         trackCount = 30,
                         durationMs = 5400000
                     )
-
                 )
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to load playlists"
@@ -171,9 +203,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private val _navigateToRoom = MutableStateFlow<String?>(null)
-    val navigateToRoom: StateFlow<String?> = _navigateToRoom
-
     fun onRoomNavigated() {
         _navigateToRoom.value = null
     }
@@ -203,6 +232,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
     fun leaveRoom(roomId: String) {
         viewModelScope.launch {
             try {
@@ -216,14 +246,16 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-    
+
     fun cleanupOldRooms() {
         viewModelScope.launch {
             try {
-                ApiClient.httpClient.delete("/api/music/rooms/cleanup")
-                fetchRooms() // Обновляем список комнат после очистки
+                val response = ApiClient.httpClient.delete("/api/meditation/rooms/cleanup")
+                if (response.status == HttpStatusCode.OK) {
+                    fetchRooms() // Обновляем список комнат после очистки
+                }
             } catch (e: Exception) {
-                _error.value = "Failed to cleanup rooms"
+                _error.value = "Failed to cleanup rooms: ${e.message}"
             }
         }
     }
