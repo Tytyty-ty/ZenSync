@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -248,12 +249,13 @@ fun LiveMeditationScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val isPlaying by webSocketManager.isPlaying.collectAsState()
-    val serverTime by webSocketManager.serverTime.collectAsState()
+    val timerText by viewModel.timerText.collectAsState()
     val room by viewModel.currentRoom.collectAsState()
     var showEndDialog by remember { mutableStateOf(false) }
     var showCompletionDialog by remember { mutableStateOf(false) }
     val participants by viewModel.roomParticipants.collectAsState()
     val showTimerControls by viewModel.showTimerControls.collectAsState()
+    val newParticipantNotification by viewModel.newParticipantNotification.collectAsState()
 
     val participantsList = remember(participants, currentUser) {
         val list = participants.toMutableList()
@@ -263,13 +265,9 @@ fun LiveMeditationScreen(
         list.map { if (it == currentUser?.username) "Вы" else it }
     }
 
-    val minutes = (serverTime / 60).coerceAtLeast(0)
-    val seconds = (serverTime % 60).coerceAtLeast(0)
-
     LaunchedEffect(Unit) {
         webSocketManager.sendCommand("get_participants")
         webSocketManager.requestParticipantsUpdate()
-        viewModel.setupWebSocketListeners(webSocketManager)
     }
 
     LaunchedEffect(webSocketManager) {
@@ -288,16 +286,15 @@ fun LiveMeditationScreen(
             val roomResponse = ApiClient.httpClient.get("/api/meditation/rooms/$roomId")
             if (roomResponse.status == HttpStatusCode.OK) {
                 val room = roomResponse.body<MeditationRoom>()
-                // Обновляем состояние через метод ViewModel
-                viewModel.startMeditation(roomId)
+                viewModel.startMeditation(roomId, room.duration)
             }
         } catch (e: Exception) {
             Toast.makeText(context, "Ошибка подключения: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
-    LaunchedEffect(serverTime) {
-        if (serverTime <= 0 && isPlaying) {
+    LaunchedEffect(timerText) {
+        if (timerText == "0:00" && isPlaying) {
             webSocketManager.sendCommand("pause")
             showCompletionDialog = true
         }
@@ -308,12 +305,6 @@ fun LiveMeditationScreen(
             if (isPlaying) {
                 webSocketManager.sendCommand("pause")
             } else {
-                if (serverTime <= 0) {
-                    room?.duration?.let { duration ->
-                        webSocketManager.sendCommand("duration:${duration * 60}")
-                        webSocketManager.sendCommand("time:${duration * 60}")
-                    }
-                }
                 webSocketManager.sendCommand("play")
             }
         }
@@ -386,7 +377,7 @@ fun LiveMeditationScreen(
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "%02d:%02d".format(minutes, seconds),
+                    text = timerText,
                     color = Color.White,
                     fontSize = 64.sp,
                     fontWeight = FontWeight.Light
@@ -451,6 +442,27 @@ fun LiveMeditationScreen(
                         }
                     }
                 }
+            }
+        }
+
+        // Уведомление о новом участнике
+        newParticipantNotification?.let { notification ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .padding(8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = notification,
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
         }
     }

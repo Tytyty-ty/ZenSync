@@ -20,7 +20,6 @@ class WebSocketService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         roomId = intent?.getStringExtra("roomId") ?: ""
         roomType = intent?.getStringExtra("roomType") ?: "meditation"

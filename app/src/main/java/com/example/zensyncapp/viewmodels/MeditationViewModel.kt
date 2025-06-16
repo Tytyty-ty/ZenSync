@@ -46,12 +46,18 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
     private val _showTimerControls = MutableStateFlow(false)
     val showTimerControls: StateFlow<Boolean> = _showTimerControls
 
+    private val _timerText = MutableStateFlow("0:00")
+    val timerText: StateFlow<String> = _timerText
+
+    private val _newParticipantNotification = MutableStateFlow<String?>(null)
+    val newParticipantNotification: StateFlow<String?> = _newParticipantNotification
+
     private var webSocketManager: WebSocketManager? = null
 
     fun setWebSocketManager(manager: WebSocketManager) {
         webSocketManager = manager
+        setupWebSocketListeners(manager)
     }
-
 
     init {
         startAutoRefresh()
@@ -90,6 +96,20 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             webSocketManager.isPlaying.collect { isPlaying ->
                 _showTimerControls.value = isPlaying
+            }
+        }
+
+        viewModelScope.launch {
+            webSocketManager.serverTime.collect { seconds ->
+                val minutes = seconds / 60
+                val remainingSeconds = seconds % 60
+                _timerText.value = String.format("%d:%02d", minutes, remainingSeconds)
+            }
+        }
+
+        viewModelScope.launch {
+            webSocketManager.newParticipantNotification.collect { notification ->
+                _newParticipantNotification.value = notification
             }
         }
     }
@@ -192,6 +212,9 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 if (response.status == HttpStatusCode.OK) {
                     _showTimerControls.value = true
+                    webSocketManager?.sendCommand("duration:${duration * 60}")
+                    webSocketManager?.sendCommand("time:${duration * 60}")
+                    webSocketManager?.sendCommand("play")
                 }
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to start meditation"
@@ -204,7 +227,7 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
             try {
                 val response = ApiClient.httpClient.delete("/api/meditation/rooms/cleanup")
                 if (response.status == HttpStatusCode.OK) {
-                    fetchRooms() // Обновляем список комнат после очистки
+                    fetchRooms()
                 }
             } catch (e: Exception) {
                 _error.value = "Failed to cleanup rooms: ${e.message}"
@@ -226,24 +249,13 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
     }
-    fun startMeditation(roomId: String) {
+
+    fun toggleMeditation(roomId: String) {
         viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                // Получаем текущую комнату
-                val roomResponse = ApiClient.httpClient.get("/api/meditation/rooms/$roomId")
-                if (roomResponse.status == HttpStatusCode.OK) {
-                    val room = roomResponse.body<MeditationRoom>()
-                    // Отправляем команду на сервер для старта медитации
-                    webSocketManager?.sendCommand("duration:${room.duration * 60}")
-                    webSocketManager?.sendCommand("time:${room.duration * 60}")
-                    webSocketManager?.sendCommand("play")
-                    _showTimerControls.value = true
-                }
-            } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to start meditation"
-            } finally {
-                _isLoading.value = false
+            if (webSocketManager?.isPlaying?.value == true) {
+                webSocketManager?.sendCommand("pause")
+            } else {
+                webSocketManager?.sendCommand("play")
             }
         }
     }

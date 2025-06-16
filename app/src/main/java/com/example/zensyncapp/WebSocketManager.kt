@@ -16,6 +16,7 @@ class WebSocketManager(private val client: HttpClient) {
     private var job: Job? = null
     private var timerJob: Job? = null
     private val messageChannel = Channel<String>(Channel.UNLIMITED)
+
     private val _participantUpdates = MutableStateFlow<List<String>>(emptyList())
     val participantUpdates: StateFlow<List<String>> = _participantUpdates
 
@@ -39,6 +40,9 @@ class WebSocketManager(private val client: HttpClient) {
 
     private val _serverTime = MutableStateFlow(0)
     val serverTime: StateFlow<Int> = _serverTime
+
+    private val _newParticipantNotification = MutableStateFlow<String?>(null)
+    val newParticipantNotification: StateFlow<String?> = _newParticipantNotification
 
     fun initializeRoom(durationMinutes: Int) {
         _roomDuration.value = durationMinutes * 60
@@ -65,7 +69,8 @@ class WebSocketManager(private val client: HttpClient) {
         roomId: String,
         authToken: String? = null,
         userId: String? = null,
-        username: String? = null) {
+        username: String? = null
+    ) {
         try {
             _connectionState.value = ConnectionState.CONNECTING
             session?.close()
@@ -149,20 +154,34 @@ class WebSocketManager(private val client: HttpClient) {
                 authToken?.let {
                     header(HttpHeaders.Authorization, "Bearer $it")
                 }
+                userId?.let {
+                    header("X-User-Id", it)
+                }
+                username?.let {
+                    header("X-Username", it)
+                }
             }
 
             job = CoroutineScope(Dispatchers.IO).launch {
                 _connectionState.value = ConnectionState.CONNECTED
 
-                try {
-                    session?.incoming?.consumeAsFlow()?.collect { frame ->
-                        if (frame is Frame.Text) {
-                            val message = frame.readText()
-                            handleMusicMessage(message)
+                launch {
+                    try {
+                        session?.incoming?.consumeAsFlow()?.collect { frame ->
+                            if (frame is Frame.Text) {
+                                val message = frame.readText()
+                                handleMusicMessage(message)
+                            }
                         }
+                    } catch (e: Exception) {
+                        _connectionState.value = ConnectionState.ERROR(e.message ?: "Music connection error")
                     }
-                } catch (e: Exception) {
-                    _connectionState.value = ConnectionState.ERROR(e.message ?: "Music connection error")
+                }
+
+                launch {
+                    for (message in messageChannel) {
+                        handleMusicMessage(message)
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -182,7 +201,7 @@ class WebSocketManager(private val client: HttpClient) {
         when {
             message.startsWith("track:") -> {
                 val trackInfo = message.removePrefix("track:")
-                // Handle track info
+                _messages.add("Now playing: $trackInfo")
             }
             message.startsWith("playback:") -> {
                 _isPlaying.value = message.removePrefix("playback:") == "play"
@@ -194,6 +213,19 @@ class WebSocketManager(private val client: HttpClient) {
             message.startsWith("participants:") -> {
                 val participants = message.removePrefix("participants:").split(",")
                 _participantUpdates.value = participants
+                _participants.clear()
+                _participants.addAll(participants)
+            }
+            message.startsWith("new_participant:") -> {
+                val username = message.removePrefix("new_participant:")
+                _newParticipantNotification.value = "$username присоединился"
+                _participants.add(username)
+                _participantUpdates.value = _participants.toList()
+                // Автоматически скрываем уведомление через 3 секунды
+                CoroutineScope(Dispatchers.IO).launch {
+                    delay(3000)
+                    _newParticipantNotification.value = null
+                }
             }
             else -> _messages.add(message)
         }
@@ -208,29 +240,46 @@ class WebSocketManager(private val client: HttpClient) {
             }
             message == "play" -> {
                 _isPlaying.value = true
+                timerJob?.cancel()
+                timerJob = CoroutineScope(Dispatchers.IO).launch {
+                    while (_serverTime.value > 0 && _isPlaying.value) {
+                        delay(1000)
+                        _serverTime.value = _serverTime.value - 1
+                        if (_serverTime.value <= 0) {
+                            _isPlaying.value = false
+                            break
+                        }
+                    }
+                }
             }
             message == "pause" -> {
                 _isPlaying.value = false
+                timerJob?.cancel()
             }
-            message.startsWith("participants:") -> {
-                val participants = message.removePrefix("participants:").split(",")
-                _participantUpdates.value = participants
-            }
-            message.startsWith("duration:") -> {
-                val duration = message.removePrefix("duration:").toIntOrNull() ?: 0
-                _roomDuration.value = duration
-                _serverTime.value = duration
-                _remainingTime.value = duration
+            message == "get_participants" -> {
+                CoroutineScope(Dispatchers.IO).launch {
+                    sendCommand("get_participants")
+                }
             }
             message.startsWith("time:") -> {
-                val time = message.removePrefix("time:").toIntOrNull() ?: 0
-                _serverTime.value = time
-                _remainingTime.value = time
+                _serverTime.value = message.removePrefix("time:").toIntOrNull() ?: 0
             }
             message.startsWith("participant:") -> {
                 val participant = message.removePrefix("participant:")
                 if (!_participants.contains(participant)) {
                     _participants.add(participant)
+                    _participantUpdates.value = _participants.toList()
+                }
+            }
+            message.startsWith("new_participant:") -> {
+                val username = message.removePrefix("new_participant:")
+                _newParticipantNotification.value = "$username присоединился"
+                _participants.add(username)
+                _participantUpdates.value = _participants.toList()
+                // Автоматически скрываем уведомление через 3 секунды
+                CoroutineScope(Dispatchers.IO).launch {
+                    delay(3000)
+                    _newParticipantNotification.value = null
                 }
             }
             message == "completed" -> {
@@ -258,6 +307,7 @@ class WebSocketManager(private val client: HttpClient) {
         _roomDuration.value = 0
         _remainingTime.value = 0
         _serverTime.value = 0
+        _newParticipantNotification.value = null
     }
 
     suspend fun requestParticipantsUpdate() {

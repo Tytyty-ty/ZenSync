@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 fun Route.webSocketRoutes() {
     val meditationRooms = ConcurrentHashMap<String, MeditationRoomData>()
+    val musicRooms = ConcurrentHashMap<String, MusicRoomData>()
 
     route("/ws") {
         webSocket("/meditation/{roomId}") {
@@ -42,20 +43,21 @@ fun Route.webSocketRoutes() {
             try {
                 roomData.connections[session.hashCode().toString()] = session
 
-                // Отправляем текущее состояние новому участнику
-                session.send(Frame.Text("duration:${roomData.duration}"))
-                session.send(Frame.Text("time:${roomData.currentTime}"))
-                session.send(Frame.Text(if (roomData.isPlaying) "play" else "pause"))
-
                 // Получаем информацию о пользователе из заголовков
                 val userId = call.request.headers["X-User-Id"]
                 val username = call.request.headers["X-Username"]
 
-                // Добавляем участника
+                // Добавляем участника и уведомляем всех
                 if (userId != null && username != null) {
                     roomData.participants[userId] = username
                     roomData.broadcast("participant:$username")
+                    roomData.broadcast("new_participant:$username")
                 }
+
+                // Отправляем текущее состояние новому участнику
+                session.send(Frame.Text("duration:${roomData.duration}"))
+                session.send(Frame.Text("time:${roomData.currentTime}"))
+                session.send(Frame.Text(if (roomData.isPlaying) "play" else "pause"))
 
                 incoming.consumeEach { frame ->
                     if (frame is Frame.Text) {
@@ -110,6 +112,57 @@ fun Route.webSocketRoutes() {
                 coroutineContext.cancelChildren()
             }
         }
+
+        webSocket("/music/{roomId}") {
+            val roomId = call.parameters["roomId"] ?: return@webSocket
+            val session = this
+
+            val roomData = musicRooms.getOrPut(roomId) {
+                MusicRoomData()
+            }
+
+            try {
+                roomData.connections[session.hashCode().toString()] = session
+
+                // Получаем информацию о пользователе из заголовков
+                val userId = call.request.headers["X-User-Id"]
+                val username = call.request.headers["X-Username"]
+
+                // Добавляем участника и уведомляем всех
+                if (userId != null && username != null) {
+                    roomData.participants[userId] = username
+                    roomData.broadcast("participants:${roomData.participants.values.joinToString(",")}")
+                    roomData.broadcast("new_participant:$username")
+                }
+
+                incoming.consumeEach { frame ->
+                    if (frame is Frame.Text) {
+                        val message = frame.readText()
+                        when {
+                            message == "play" -> {
+                                roomData.isPlaying = true
+                                roomData.broadcast("playback:play")
+                            }
+                            message == "pause" -> {
+                                roomData.isPlaying = false
+                                roomData.broadcast("playback:pause")
+                            }
+                            message == "get_participants" -> {
+                                session.send(Frame.Text("participants:${roomData.participants.values.joinToString(",")}"))
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                println("Music WebSocket error: ${e.message}")
+            } finally {
+                roomData.connections.remove(session.hashCode().toString())
+                if (roomData.connections.isEmpty()) {
+                    musicRooms.remove(roomId)
+                }
+                coroutineContext.cancelChildren()
+            }
+        }
     }
 }
 
@@ -127,6 +180,23 @@ class MeditationRoomData {
                 session.send(Frame.Text(message))
             } catch (e: Exception) {
                 println("Failed to send message: ${e.message}")
+                connections.remove(session.hashCode().toString())
+            }
+        }
+    }
+}
+
+class MusicRoomData {
+    var isPlaying: Boolean = false
+    val connections = ConcurrentHashMap<String, WebSocketSession>()
+    val participants = ConcurrentHashMap<String, String>() // userId to username
+
+    suspend fun broadcast(message: String) {
+        connections.values.forEach { session ->
+            try {
+                session.send(Frame.Text(message))
+            } catch (e: Exception) {
+                println("Failed to send music message: ${e.message}")
                 connections.remove(session.hashCode().toString())
             }
         }

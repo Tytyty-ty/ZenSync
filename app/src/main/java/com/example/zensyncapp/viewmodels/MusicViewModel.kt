@@ -1,7 +1,7 @@
 package com.example.zensyncapp.viewmodels
 
 import android.app.Application
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
@@ -57,6 +57,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _refreshInterval = MutableStateFlow(5000L)
     private var refreshJob: Job? = null
 
+    private val _newParticipantNotification = MutableStateFlow<String?>(null)
+    val newParticipantNotification: StateFlow<String?> = _newParticipantNotification
+
+    private var webSocketManager: WebSocketManager? = null
+
     init {
         fetchRooms()
         startAutoRefresh()
@@ -72,6 +77,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setWebSocketManager(manager: WebSocketManager) {
+        webSocketManager = manager
+        setupWebSocketListeners(manager)
+    }
+
     fun setupWebSocketListeners(webSocketManager: WebSocketManager) {
         viewModelScope.launch {
             webSocketManager.participantUpdates.collect { participants ->
@@ -79,6 +89,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 _currentRoom.value?.let { currentRoom ->
                     _currentRoom.value = currentRoom.copy(participants = participants.size)
                 }
+            }
+        }
+
+        viewModelScope.launch {
+            webSocketManager.newParticipantNotification.collect { notification ->
+                _newParticipantNotification.value = notification
             }
         }
     }
@@ -241,6 +257,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 _currentRoom.value = null
                 WebSocketService.stopService(getApplication())
+                fetchRooms()
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to leave room"
             }
@@ -250,9 +267,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     fun cleanupOldRooms() {
         viewModelScope.launch {
             try {
-                val response = ApiClient.httpClient.delete("/api/meditation/rooms/cleanup")
+                val response = ApiClient.httpClient.delete("/api/music/rooms/cleanup")
                 if (response.status == HttpStatusCode.OK) {
-                    fetchRooms() // Обновляем список комнат после очистки
+                    fetchRooms()
                 }
             } catch (e: Exception) {
                 _error.value = "Failed to cleanup rooms: ${e.message}"
