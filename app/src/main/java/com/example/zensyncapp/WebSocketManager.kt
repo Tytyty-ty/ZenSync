@@ -270,12 +270,11 @@ class WebSocketManager(private val client: HttpClient) {
                 val time = message.removePrefix("time:").toIntOrNull() ?: 0
                 _timerState.value = _timerState.value.copy(currentTime = time)
             }
-            message.startsWith("participant:") -> {
-                val participant = message.removePrefix("participant:")
-                if (!_participants.contains(participant)) {
-                    _participants.add(participant)
-                    _participantUpdates.value = _participants.toList()
-                }
+            message.startsWith("participants:") -> {
+                val participants = message.removePrefix("participants:").split(",")
+                _participantUpdates.value = participants
+                _participants.clear()
+                _participants.addAll(participants)
             }
             message.startsWith("new_participant:") -> {
                 val username = message.removePrefix("new_participant:")

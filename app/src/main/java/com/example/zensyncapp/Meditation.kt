@@ -256,8 +256,9 @@ fun LiveMeditationScreen(
     var showEndDialog by remember { mutableStateOf(false) }
     var showCompletionDialog by remember { mutableStateOf(false) }
     val participants by viewModel.roomParticipants.collectAsState()
-    val showTimerControls by viewModel.showTimerControls.collectAsState()
     val newParticipantNotification by viewModel.newParticipantNotification.collectAsState()
+    val showTimerControls by viewModel.showTimerControls.collectAsState()
+
 
     val participantsList = remember(participants, currentUser) {
         val list = participants.toMutableList()

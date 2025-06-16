@@ -45,16 +45,17 @@ fun Route.webSocketRoutes() {
             try {
                 roomData.connections[session.hashCode().toString()] = session
                 roomData.sendInitialState(session)
+
                 // Получаем информацию о пользователе из заголовков
                 val userId = call.request.headers["X-User-Id"]
                 val username = call.request.headers["X-Username"]
 
-
-
                 // Добавляем участника и уведомляем всех
                 if (userId != null && username != null) {
                     roomData.participants[userId] = username
-                    roomData.broadcast("participant:$username")
+                    // Отправляем обновленный список всем участникам
+                    roomData.broadcast("participants:${roomData.participants.values.joinToString(",")}")
+                    // Отправляем уведомление о новом участнике
                     roomData.broadcast("new_participant:$username")
                 }
 
@@ -62,6 +63,8 @@ fun Route.webSocketRoutes() {
                 session.send(Frame.Text("duration:${roomData.duration}"))
                 session.send(Frame.Text("time:${roomData.currentTime}"))
                 session.send(Frame.Text(if (roomData.isPlaying) "play" else "pause"))
+                // Отправляем текущий список участников новому подключению
+                session.send(Frame.Text("participants:${roomData.participants.values.joinToString(",")}"))
 
                 incoming.consumeEach { frame ->
                     if (frame is Frame.Text) {
@@ -70,24 +73,20 @@ fun Route.webSocketRoutes() {
                             message == "get_state" -> {
                                 roomData.sendInitialState(session)
                             }
-                        }
-                        when {
+                            message == "get_participants" -> {
+                                // Отправляем текущий список участников по запросу
+                                session.send(Frame.Text("participants:${roomData.participants.values.joinToString(",")}"))
+                            }
                             message.startsWith("duration:") -> {
                                 roomData.duration = message.removePrefix("duration:").toIntOrNull() ?: 0
                                 roomData.currentTime = roomData.duration
                                 roomData.broadcast("time:${roomData.currentTime}")
                             }
-
                             message == "play" -> {
                                 roomData.handlePlayCommand()
                             }
                             message == "pause" -> {
                                 roomData.handlePauseCommand()
-                            }
-                            message == "get_participants" -> {
-                                roomData.participants.values.forEach { username ->
-                                    session.send(Frame.Text("participant:$username"))
-                                }
                             }
                             message.startsWith("time:") -> {
                                 roomData.currentTime = message.removePrefix("time:").toIntOrNull() ?: 0
@@ -99,6 +98,14 @@ fun Route.webSocketRoutes() {
             } catch (e: Exception) {
                 println("WebSocket error: ${e.message}")
             } finally {
+                // При отключении пользователя удаляем его из списка участников
+                val userId = call.request.headers["X-User-Id"]
+                if (userId != null) {
+                    roomData.participants.remove(userId)
+                    // Уведомляем остальных участников об обновленном списке
+                    roomData.broadcast("participants:${roomData.participants.values.joinToString(",")}")
+                }
+
                 roomData.connections.remove(session.hashCode().toString())
                 if (roomData.connections.isEmpty()) {
                     meditationRooms.remove(roomId)
@@ -125,9 +132,14 @@ fun Route.webSocketRoutes() {
                 // Добавляем участника и уведомляем всех
                 if (userId != null && username != null) {
                     roomData.participants[userId] = username
+                    // Отправляем обновленный список всем участникам
                     roomData.broadcast("participants:${roomData.participants.values.joinToString(",")}")
+                    // Отправляем уведомление о новом участнике
                     roomData.broadcast("new_participant:$username")
                 }
+
+                // Отправляем текущий список участников новому подключению
+                session.send(Frame.Text("participants:${roomData.participants.values.joinToString(",")}"))
 
                 incoming.consumeEach { frame ->
                     if (frame is Frame.Text) {
@@ -142,6 +154,7 @@ fun Route.webSocketRoutes() {
                                 roomData.broadcast("playback:pause")
                             }
                             message == "get_participants" -> {
+                                // Отправляем текущий список участников по запросу
                                 session.send(Frame.Text("participants:${roomData.participants.values.joinToString(",")}"))
                             }
                         }
@@ -150,6 +163,14 @@ fun Route.webSocketRoutes() {
             } catch (e: Exception) {
                 println("Music WebSocket error: ${e.message}")
             } finally {
+                // При отключении пользователя удаляем его из списка участников
+                val userId = call.request.headers["X-User-Id"]
+                if (userId != null) {
+                    roomData.participants.remove(userId)
+                    // Уведомляем остальных участников об обновленном списке
+                    roomData.broadcast("participants:${roomData.participants.values.joinToString(",")}")
+                }
+
                 roomData.connections.remove(session.hashCode().toString())
                 if (roomData.connections.isEmpty()) {
                     musicRooms.remove(roomId)
@@ -178,6 +199,7 @@ class MeditationRoomData {
             }
         }
     }
+
     suspend fun sendInitialState(session: WebSocketSession) {
         session.send(Frame.Text("state:$currentTime,$isPlaying,$duration"))
     }
@@ -213,7 +235,6 @@ class MeditationRoomData {
         }
     }
 }
-
 
 class MusicRoomData {
     var isPlaying: Boolean = false

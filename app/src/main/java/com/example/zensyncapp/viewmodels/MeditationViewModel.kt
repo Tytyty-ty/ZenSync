@@ -66,7 +66,9 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     init {
+        fetchRooms()
         startAutoRefresh()
+        cleanupOldRooms()
     }
 
     private fun startAutoRefresh() {
@@ -98,6 +100,15 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                 if (timerState.currentTime <= 0 && timerState.isPlaying) {
                     webSocketManager.pauseMeditation()
                     _showCompletionDialog.value = true
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            webSocketManager.participantUpdates.collect { participants ->
+                _roomParticipants.value = participants
+                _currentRoom.value?.let { currentRoom ->
+                    _currentRoom.value = currentRoom.copy(participants = participants.size)
                 }
             }
         }

@@ -191,11 +191,20 @@ fun MusicRoomDetailScreen(
 
     LaunchedEffect(Unit) {
         webSocketManager.sendCommand("get_participants")
+        webSocketManager.requestParticipantsUpdate()
         viewModel.setupWebSocketListeners(webSocketManager)
     }
 
     LaunchedEffect(roomId) {
         viewModel.fetchRoomDetails(roomId)
+    }
+
+    val participantsList = remember(participants, currentUser) {
+        val list = participants.toMutableList()
+        if (currentUser?.username != null && !list.contains(currentUser.username)) {
+            list.add(currentUser.username)
+        }
+        list.map { if (it == currentUser?.username) "Вы" else it }
     }
 
     fun togglePlayback() {
@@ -207,6 +216,9 @@ fun MusicRoomDetailScreen(
             }
         }
     }
+
+    ParticipantsSection(participants = participantsList)
+
 
     Scaffold(
         topBar = {
@@ -239,7 +251,27 @@ fun MusicRoomDetailScreen(
             }
         }
     }
+    newParticipantNotification?.let { notification ->
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .background(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .padding(8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = notification,
+                color = Color.White,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
 }
+
 
 @Composable
 private fun MusicRoomContent(

@@ -69,6 +69,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     init {
         fetchRooms()
         startAutoRefresh()
+        cleanupOldRooms()
     }
 
     private fun startAutoRefresh() {
@@ -85,6 +86,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         webSocketManager = manager
         setupWebSocketListeners(manager)
     }
+
 
     fun setupWebSocketListeners(webSocketManager: WebSocketManager) {
         viewModelScope.launch {
