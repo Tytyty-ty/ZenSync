@@ -26,6 +26,8 @@ import com.example.zensyncapp.models.MusicRoom
 import com.example.zensyncapp.models.SpotifyPlaylist
 import com.example.zensyncapp.network.WebSocketManager
 import com.example.zensyncapp.viewmodels.MusicViewModel
+import com.google.accompanist.swiperefresh.SwipeRefresh
+import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import kotlinx.coroutines.launch
 
 @Composable
@@ -616,6 +618,7 @@ fun MusicRoomListScreen(
 ) {
     val rooms by viewModel.rooms.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.clearRooms()
@@ -641,20 +644,38 @@ fun MusicRoomListScreen(
                 modifier = Modifier.weight(1f),
                 singleLine = true
             )
+            IconButton(
+                onClick = { viewModel.clearAllRooms() },
+                modifier = Modifier.padding(start = 8.dp)
+            ) {
+                Icon(Icons.Default.Delete, "Очистить все комнаты")
+            }
         }
 
-        LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
-            items(
-                rooms.filter { room ->
-                    room.name.contains(searchQuery, ignoreCase = true) ||
-                            room.creator.contains(searchQuery, ignoreCase = true) ||
-                            room.playlist?.name?.contains(searchQuery, ignoreCase = true) ?: false
+        SwipeRefresh(
+            state = rememberSwipeRefreshState(isRefreshing),
+            onRefresh = { viewModel.fetchRooms(forceRefresh = true) },
+            modifier = Modifier.weight(1f)
+        ) {
+            if (rooms.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Нет доступных комнат")
                 }
-            ) { room ->
-                MusicRoomCard(room = room) {
-                    navController.navigate("MusicRoom/${room.id}")
+            } else {
+                LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    items(
+                        rooms.filter { room ->
+                            room.name.contains(searchQuery, ignoreCase = true) ||
+                                    room.creator.contains(searchQuery, ignoreCase = true) ||
+                                    room.playlist?.name?.contains(searchQuery, ignoreCase = true) ?: false
+                        }
+                    ) { room ->
+                        MusicRoomCard(room = room) {
+                            navController.navigate("MusicRoom/${room.id}")
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }

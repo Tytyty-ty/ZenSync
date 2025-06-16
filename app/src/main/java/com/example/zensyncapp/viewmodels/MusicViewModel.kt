@@ -1,6 +1,7 @@
 package com.example.zensyncapp.viewmodels
 
 import android.app.Application
+import android.widget.Toast
 import androidx.compose.runtime.*
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -56,6 +57,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _refreshInterval = MutableStateFlow(5000L)
     private var refreshJob: Job? = null
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing
 
     private val _newParticipantNotification = MutableStateFlow<String?>(null)
     val newParticipantNotification: StateFlow<String?> = _newParticipantNotification
@@ -123,9 +127,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _showPlaylistSelector.value = false
     }
 
-    fun fetchRooms() {
+    fun fetchRooms(forceRefresh: Boolean = false) {
         viewModelScope.launch {
             _isLoading.value = true
+            if (forceRefresh) {
+                _isRefreshing.value = true
+            }
             try {
                 val response = ApiClient.httpClient.get("/api/music/rooms")
                 if (response.status == HttpStatusCode.OK) {
@@ -133,6 +140,24 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to load rooms"
+            } finally {
+                _isLoading.value = false
+                _isRefreshing.value = false
+            }
+        }
+    }
+
+    fun clearAllRooms() {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val response = ApiClient.httpClient.delete("/api/music/rooms/cleanup")
+                if (response.status == HttpStatusCode.OK) {
+                    _rooms.value = emptyList()
+                    Toast.makeText(getApplication(), "Все комнаты очищены", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                _error.value = "Failed to cleanup rooms: ${e.message}"
             } finally {
                 _isLoading.value = false
             }

@@ -29,6 +29,8 @@ import com.example.zensyncapp.models.AuthResponse
 import com.example.zensyncapp.models.MeditationRoom
 import com.example.zensyncapp.network.WebSocketManager
 import com.example.zensyncapp.viewmodels.MeditationViewModel
+import com.google.accompanist.swiperefresh.SwipeRefresh
+import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.http.HttpStatusCode
@@ -142,8 +144,7 @@ fun JoinMeditationRoomScreen(
 ) {
     val rooms by viewModel.rooms.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
-    val isLoading by viewModel.isLoading.collectAsState()
-    val context = LocalContext.current
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.fetchRooms()
@@ -170,31 +171,33 @@ fun JoinMeditationRoomScreen(
             )
         }
 
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else if (rooms.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Нет доступных комнат")
-            }
-        } else {
-            LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
-                items(
-                    rooms.filter { room ->
-                        room.name.contains(searchQuery, ignoreCase = true) ||
-                                room.creator.contains(searchQuery, ignoreCase = true) ||
-                                room.goal?.contains(searchQuery, ignoreCase = true) ?: false
-                    }
-                ) { room ->
-                    MeditationRoomCard(
-                        room = room,
-                        onClick = {
-                            viewModel.joinRoom(room.id)
-                            navController.navigate("LiveMeditationSession/${room.id}")
+        SwipeRefresh(
+            state = rememberSwipeRefreshState(isRefreshing),
+            onRefresh = { viewModel.fetchRooms(forceRefresh = true) },
+            modifier = Modifier.weight(1f)
+        ) {
+            if (rooms.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Нет доступных комнат")
+                }
+            } else {
+                LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    items(
+                        rooms.filter { room ->
+                            room.name.contains(searchQuery, ignoreCase = true) ||
+                                    room.creator.contains(searchQuery, ignoreCase = true) ||
+                                    room.goal?.contains(searchQuery, ignoreCase = true) ?: false
                         }
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    ) { room ->
+                        MeditationRoomCard(
+                            room = room,
+                            onClick = {
+                                viewModel.joinRoom(room.id)
+                                navController.navigate("LiveMeditationSession/${room.id}")
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                 }
             }
         }

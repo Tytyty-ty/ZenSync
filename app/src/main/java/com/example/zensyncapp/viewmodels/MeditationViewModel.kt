@@ -43,6 +43,9 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
     private val _refreshInterval = MutableStateFlow(5000L)
     private var refreshJob: Job? = null
 
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing
+
     private val _showTimerControls = MutableStateFlow(false)
     val showTimerControls: StateFlow<Boolean> = _showTimerControls
 
@@ -122,9 +125,12 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
         _navigateToRoom.value = null
     }
 
-    fun fetchRooms() {
+    fun fetchRooms(forceRefresh: Boolean = false) {
         viewModelScope.launch {
             _isLoading.value = true
+            if (forceRefresh) {
+                _isRefreshing.value = true
+            }
             try {
                 val response = ApiClient.httpClient.get("/api/meditation/rooms")
                 if (response.status == HttpStatusCode.OK) {
@@ -134,6 +140,7 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                 _error.value = e.message ?: "Failed to fetch rooms"
             } finally {
                 _isLoading.value = false
+                _isRefreshing.value = false
             }
         }
     }
