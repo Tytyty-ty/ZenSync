@@ -151,10 +151,17 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
+                // Сначала очищаем локально
+                _rooms.value = emptyList()
+
+                // Затем отправляем запрос на сервер
                 val response = ApiClient.httpClient.delete("/api/music/rooms/cleanup")
                 if (response.status == HttpStatusCode.OK) {
-                    _rooms.value = emptyList()
                     Toast.makeText(getApplication(), "Все комнаты очищены", Toast.LENGTH_SHORT).show()
+                    // Обновляем список комнат
+                    fetchRooms(forceRefresh = true)
+                } else {
+                    _error.value = "Ошибка при очистке комнат: ${response.status}"
                 }
             } catch (e: Exception) {
                 _error.value = "Failed to cleanup rooms: ${e.message}"
@@ -307,4 +314,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             _rooms.value = emptyList()
         }
     }
+
+
 }

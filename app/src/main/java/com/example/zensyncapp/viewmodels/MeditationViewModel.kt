@@ -222,11 +222,19 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                     webSocketManager?.sendCommand("duration:${duration * 60}")
                     webSocketManager?.sendCommand("time:${duration * 60}")
                     webSocketManager?.sendCommand("play")
+                    // Инициализируем таймер в ViewModel
+                    _timerText.value = formatTime(duration * 60)
                 }
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to start meditation"
             }
         }
+    }
+
+    private fun formatTime(seconds: Int): String {
+        val minutes = seconds / 60
+        val remainingSeconds = seconds % 60
+        return String.format("%d:%02d", minutes, remainingSeconds)
     }
 
     fun cleanupOldRooms() {

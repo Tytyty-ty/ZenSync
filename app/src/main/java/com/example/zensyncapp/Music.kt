@@ -619,10 +619,11 @@ fun MusicRoomListScreen(
     val rooms by viewModel.rooms.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         viewModel.clearRooms()
-        viewModel.fetchRooms()
+        viewModel.fetchRooms(forceRefresh = true)
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -671,6 +672,7 @@ fun MusicRoomListScreen(
                         }
                     ) { room ->
                         MusicRoomCard(room = room) {
+                            viewModel.joinMusicRoom(room.id)
                             navController.navigate("MusicRoom/${room.id}")
                         }
                         Spacer(modifier = Modifier.height(8.dp))

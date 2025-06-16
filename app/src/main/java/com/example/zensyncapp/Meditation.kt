@@ -262,8 +262,10 @@ fun LiveMeditationScreen(
 
     val participantsList = remember(participants, currentUser) {
         val list = participants.toMutableList()
-        if (currentUser?.username != null && !list.contains(currentUser.username)) {
-            list.add(currentUser.username)
+        currentUser?.username?.let { username ->
+            if (!list.contains(username)) {
+                list.add(username)
+            }
         }
         list.map { if (it == currentUser?.username) "Вы" else it }
     }

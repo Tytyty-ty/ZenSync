@@ -102,7 +102,7 @@ class WebSocketManager(private val client: HttpClient) {
                         session?.incoming?.consumeAsFlow()?.collect { frame ->
                             if (frame is Frame.Text) {
                                 val message = frame.readText()
-                                messageChannel.send(message)
+                                handleMessage(message)
                             }
                         }
                     } catch (e: Exception) {
@@ -132,7 +132,13 @@ class WebSocketManager(private val client: HttpClient) {
             _connectionState.value = ConnectionState.ERROR(e.message ?: "Connection failed")
         }
     }
-
+    private suspend fun broadcast(message: String) {
+        try {
+            session?.send(Frame.Text(message))
+        } catch (e: Exception) {
+            _connectionState.value = ConnectionState.ERROR("Failed to broadcast: ${e.message}")
+        }
+    }
     suspend fun connectToMusicRoom(
         roomId: String,
         authToken: String? = null,
@@ -234,9 +240,13 @@ class WebSocketManager(private val client: HttpClient) {
     private fun handleMessage(message: String) {
         when {
             message.startsWith("duration:") -> {
-                _roomDuration.value = message.removePrefix("duration:").toIntOrNull() ?: 0
-                _remainingTime.value = _roomDuration.value
-                _serverTime.value = _roomDuration.value
+                val duration = message.removePrefix("duration:").toIntOrNull() ?: 0
+                _roomDuration.value = duration
+                _remainingTime.value = duration
+                _serverTime.value = duration
+                CoroutineScope(Dispatchers.IO).launch {
+                    broadcast("time:$duration")
+                }
             }
             message == "play" -> {
                 _isPlaying.value = true
@@ -245,11 +255,20 @@ class WebSocketManager(private val client: HttpClient) {
                     while (_serverTime.value > 0 && _isPlaying.value) {
                         delay(1000)
                         _serverTime.value = _serverTime.value - 1
+                        CoroutineScope(Dispatchers.IO).launch {
+                            broadcast("time:${_serverTime.value}")
+                        }
                         if (_serverTime.value <= 0) {
+                            CoroutineScope(Dispatchers.IO).launch {
+                                broadcast("completed")
+                            }
                             _isPlaying.value = false
                             break
                         }
                     }
+                }
+                CoroutineScope(Dispatchers.IO).launch {
+                    broadcast("play")
                 }
             }
             message == "pause" -> {
