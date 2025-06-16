@@ -195,7 +195,10 @@ fun Route.meditationRoutes() {
                 }
             }
 
-            call.respond(HttpStatusCode.OK, mapOf("message" to "Meditation started"))
+            call.respond(HttpStatusCode.OK, mapOf(
+                "duration" to duration,
+                "message" to "Meditation started"
+            ))
         }
 
         post("/rooms/{id}/leave") {

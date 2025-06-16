@@ -270,6 +270,10 @@ fun LiveMeditationScreen(
         list.map { if (it == currentUser?.username) "Вы" else it }
     }
 
+    fun toggleMeditation() {
+        viewModel.toggleMeditation()
+    }
+
     LaunchedEffect(Unit) {
         webSocketManager.sendCommand("get_participants")
         webSocketManager.requestParticipantsUpdate()
@@ -308,15 +312,6 @@ fun LiveMeditationScreen(
         }
     }
 
-    fun toggleMeditation() {
-        coroutineScope.launch {
-            if (isPlaying) {
-                webSocketManager.sendCommand("pause")
-            } else {
-                webSocketManager.sendCommand("play")
-            }
-        }
-    }
 
     if (showCompletionDialog) {
         AlertDialog(

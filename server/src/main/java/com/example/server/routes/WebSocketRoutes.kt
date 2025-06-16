@@ -5,6 +5,8 @@ import io.ktor.server.application.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.channels.consumeEach
@@ -77,26 +79,10 @@ fun Route.webSocketRoutes() {
                             }
 
                             message == "play" -> {
-                                roomData.isPlaying = true
-                                roomData.timerJob?.cancel()
-                                roomData.timerJob = launch {
-                                    while (roomData.currentTime > 0 && roomData.isPlaying) {
-                                        delay(1000)
-                                        roomData.currentTime--
-                                        roomData.broadcast("time:${roomData.currentTime}")
-                                        if (roomData.currentTime <= 0) {
-                                            roomData.broadcast("completed")
-                                            roomData.isPlaying = false
-                                            break
-                                        }
-                                    }
-                                }
-                                roomData.broadcast("play")
+                                roomData.handlePlayCommand()
                             }
                             message == "pause" -> {
-                                roomData.isPlaying = false
-                                roomData.timerJob?.cancel()
-                                roomData.broadcast("pause")
+                                roomData.handlePauseCommand()
                             }
                             message == "get_participants" -> {
                                 roomData.participants.values.forEach { username ->
@@ -195,7 +181,35 @@ class MeditationRoomData {
     suspend fun sendInitialState(session: WebSocketSession) {
         session.send(Frame.Text("state:$currentTime,$isPlaying,$duration"))
     }
+
+    suspend fun handlePlayCommand() {
+        if (!isPlaying && currentTime <= 0) {
+            currentTime = duration
+        }
+        isPlaying = true
+        timerJob?.cancel()
+        timerJob = CoroutineScope(Dispatchers.IO).launch {
+            while (currentTime > 0 && isPlaying) {
+                delay(1000)
+                currentTime--
+                broadcast("time:$currentTime")
+                if (currentTime <= 0) {
+                    broadcast("completed")
+                    isPlaying = false
+                    break
+                }
+            }
+        }
+        broadcast("play")
+    }
+
+    suspend fun handlePauseCommand() {
+        isPlaying = false
+        timerJob?.cancel()
+        broadcast("pause")
+    }
 }
+
 
 class MusicRoomData {
     var isPlaying: Boolean = false

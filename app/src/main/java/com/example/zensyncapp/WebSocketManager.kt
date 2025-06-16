@@ -185,9 +185,11 @@ class WebSocketManager(private val client: HttpClient) {
     }
 
     suspend fun sendCommand(command: String) {
+        println("Sending command: $command") // Логирование исходящих команд
         try {
             session?.send(Frame.Text(command))
         } catch (e: Exception) {
+            println("Failed to send command: ${e.message}")
             _connectionState.value = ConnectionState.ERROR("Send failed: ${e.message}")
         }
     }
@@ -227,6 +229,7 @@ class WebSocketManager(private val client: HttpClient) {
     }
 
     private fun handleMessage(message: String) {
+        println("Received message: $message")
         when {
             message.startsWith("duration:") -> {
                 val duration = message.removePrefix("duration:").toIntOrNull() ?: 0
@@ -244,20 +247,12 @@ class WebSocketManager(private val client: HttpClient) {
                     while (_serverTime.value > 0 && _isPlaying.value) {
                         delay(1000)
                         _serverTime.value = _serverTime.value - 1
-                        CoroutineScope(Dispatchers.IO).launch {
-                            broadcast("time:${_serverTime.value}")
-                        }
                         if (_serverTime.value <= 0) {
-                            CoroutineScope(Dispatchers.IO).launch {
-                                broadcast("completed")
-                            }
                             _isPlaying.value = false
+                            sendCommand("completed")
                             break
                         }
                     }
-                }
-                CoroutineScope(Dispatchers.IO).launch {
-                    broadcast("play")
                 }
             }
             message == "pause" -> {
@@ -307,6 +302,35 @@ class WebSocketManager(private val client: HttpClient) {
             }
             else -> _messages.add(message)
         }
+    }
+
+    suspend fun startMeditation(durationSeconds: Int) {
+        _serverTime.value = durationSeconds
+        _roomDuration.value = durationSeconds
+        sendCommand("duration:$durationSeconds")
+        sendCommand("play")
+    }
+
+    suspend fun toggleMeditation() {
+        if (_isPlaying.value) {
+            pauseMeditation()
+        } else {
+            playMeditation()
+        }
+    }
+
+
+    suspend fun playMeditation() {
+        if (_serverTime.value <= 0) {
+            _serverTime.value = _roomDuration.value
+        }
+        _isPlaying.value = true
+        sendCommand("play")
+    }
+
+    suspend fun pauseMeditation() {
+        _isPlaying.value = false
+        sendCommand("pause")
     }
 
     fun disconnect() {

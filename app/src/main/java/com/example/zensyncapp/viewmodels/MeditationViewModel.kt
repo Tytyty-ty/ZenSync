@@ -218,17 +218,17 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
     fun startMeditation(roomId: String, duration: Int) {
         viewModelScope.launch {
             try {
+                _showTimerControls.value = true
+                webSocketManager?.startMeditation(duration * 60)
+
+                // Обновляем состояние на сервере
                 val response = ApiClient.httpClient.post("/api/meditation/rooms/$roomId/start") {
                     contentType(ContentType.Application.Json)
                     setBody(duration)
                 }
-                if (response.status == HttpStatusCode.OK) {
-                    _showTimerControls.value = true
-                    webSocketManager?.sendCommand("duration:${duration * 60}")
-                    webSocketManager?.sendCommand("time:${duration * 60}")
-                    webSocketManager?.sendCommand("play")
-                    // Инициализируем таймер в ViewModel
-                    _timerText.value = formatTime(duration * 60)
+
+                if (response.status != HttpStatusCode.OK) {
+                    _error.value = "Failed to update server state"
                 }
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to start meditation"
@@ -270,13 +270,9 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun toggleMeditation(roomId: String) {
+    fun toggleMeditation() {
         viewModelScope.launch {
-            if (webSocketManager?.isPlaying?.value == true) {
-                webSocketManager?.sendCommand("pause")
-            } else {
-                webSocketManager?.sendCommand("play")
-            }
+            webSocketManager?.toggleMeditation()
         }
     }
 }
