@@ -77,25 +77,14 @@ class WebSocketManager(private val client: HttpClient) {
             timerJob?.cancel()
 
             session = client.webSocketSession {
-                url {
-                    protocol = URLProtocol.WS
-                    host = "192.168.3.6"
-                    port = 8081
-                    path("ws/meditation/$roomId")
-                }
-                authToken?.let {
-                    header(HttpHeaders.Authorization, "Bearer $it")
-                }
-                userId?.let {
-                    header("X-User-Id", it)
-                }
-                username?.let {
-                    header("X-Username", it)
-                }
+                // ... существующий код подключения ...
             }
 
             job = CoroutineScope(Dispatchers.IO).launch {
                 _connectionState.value = ConnectionState.CONNECTED
+
+                // Запрашиваем текущее состояние комнаты при подключении
+                sendCommand("get_state")
 
                 launch {
                     try {
@@ -275,6 +264,15 @@ class WebSocketManager(private val client: HttpClient) {
                 _isPlaying.value = false
                 timerJob?.cancel()
             }
+            message.startsWith("state:") -> {
+                // Обработка начального состояния комнаты
+                val parts = message.removePrefix("state:").split(",")
+                if (parts.size >= 3) {
+                    _serverTime.value = parts[0].toIntOrNull() ?: 0
+                    _isPlaying.value = parts[1].toBoolean()
+                    _roomDuration.value = parts[2].toIntOrNull() ?: 0
+                }
+            }
             message == "get_participants" -> {
                 CoroutineScope(Dispatchers.IO).launch {
                     sendCommand("get_participants")
@@ -301,6 +299,7 @@ class WebSocketManager(private val client: HttpClient) {
                     _newParticipantNotification.value = null
                 }
             }
+
             message == "completed" -> {
                 _isPlaying.value = false
                 _remainingTime.value = 0

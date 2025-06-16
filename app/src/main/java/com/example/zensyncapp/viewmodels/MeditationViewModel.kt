@@ -107,6 +107,11 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                 val minutes = seconds / 60
                 val remainingSeconds = seconds % 60
                 _timerText.value = String.format("%d:%02d", minutes, remainingSeconds)
+
+                // Если таймер на 0 и медитация идет, останавливаем ее
+                if (seconds <= 0 && webSocketManager.isPlaying.value) {
+                    webSocketManager.sendCommand("pause")
+                }
             }
         }
 

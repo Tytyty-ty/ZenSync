@@ -291,7 +291,10 @@ fun LiveMeditationScreen(
             val roomResponse = ApiClient.httpClient.get("/api/meditation/rooms/$roomId")
             if (roomResponse.status == HttpStatusCode.OK) {
                 val room = roomResponse.body<MeditationRoom>()
-                viewModel.startMeditation(roomId, room.duration)
+                // Устанавливаем начальное состояние таймера
+                webSocketManager.setInitialTime(room.duration)
+                // Запрашиваем актуальное состояние у сервера
+                webSocketManager.sendCommand("get_state")
             }
         } catch (e: Exception) {
             Toast.makeText(context, "Ошибка подключения: ${e.message}", Toast.LENGTH_LONG).show()

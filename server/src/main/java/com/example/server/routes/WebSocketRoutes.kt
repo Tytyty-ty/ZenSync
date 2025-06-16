@@ -42,10 +42,12 @@ fun Route.webSocketRoutes() {
 
             try {
                 roomData.connections[session.hashCode().toString()] = session
-
+                roomData.sendInitialState(session)
                 // Получаем информацию о пользователе из заголовков
                 val userId = call.request.headers["X-User-Id"]
                 val username = call.request.headers["X-Username"]
+
+
 
                 // Добавляем участника и уведомляем всех
                 if (userId != null && username != null) {
@@ -63,11 +65,17 @@ fun Route.webSocketRoutes() {
                     if (frame is Frame.Text) {
                         val message = frame.readText()
                         when {
+                            message == "get_state" -> {
+                                roomData.sendInitialState(session)
+                            }
+                        }
+                        when {
                             message.startsWith("duration:") -> {
                                 roomData.duration = message.removePrefix("duration:").toIntOrNull() ?: 0
                                 roomData.currentTime = roomData.duration
                                 roomData.broadcast("time:${roomData.currentTime}")
                             }
+
                             message == "play" -> {
                                 roomData.isPlaying = true
                                 roomData.timerJob?.cancel()
@@ -183,6 +191,9 @@ class MeditationRoomData {
                 connections.remove(session.hashCode().toString())
             }
         }
+    }
+    suspend fun sendInitialState(session: WebSocketSession) {
+        session.send(Frame.Text("state:$currentTime,$isPlaying,$duration"))
     }
 }
 
