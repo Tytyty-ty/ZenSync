@@ -16,6 +16,7 @@ import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.deleteAll
 import org.jetbrains.exposed.sql.deleteWhere
 import java.time.LocalDateTime
 
@@ -159,7 +160,7 @@ fun Route.musicRoutes() {
                 return@post
             }
 
-            // Проверяем, не является ли пользователь уже участником
+
             val alreadyParticipant = transaction {
                 RoomParticipants.select {
                     (RoomParticipants.roomId eq roomId) and
@@ -237,40 +238,13 @@ fun Route.musicRoutes() {
             call.respond(status)
         }
 
-        delete("/rooms/cleanup") {
-            val deletedRooms = transaction {
-
-                val allMusicRooms = MusicRooms.selectAll().map { it[MusicRooms.id].value }
-
-
-                val emptyRooms = mutableListOf<Int>()
-
-                allMusicRooms.forEach { roomId ->
-                    val hasParticipants = RoomParticipants
-                        .select {
-                            (RoomParticipants.roomId eq roomId) and
-                                    (RoomParticipants.roomType eq "music")
-                        }
-                        .count() > 0
-
-                    if (!hasParticipants) {
-                        emptyRooms.add(roomId)
-                    }
-                }
-
-
-                emptyRooms.mapNotNull { roomId ->
-                    if (MusicRooms.deleteWhere { MusicRooms.id eq roomId } > 0) {
-                        roomId
-                    } else null
-                }
+        delete("/rooms/clear-all") {
+            transaction {
+                MusicRooms.deleteAll()
+                RoomParticipants.deleteWhere { RoomParticipants.roomType eq "music" }
             }
-
-            println("Удалено музыкальных комнат: ${deletedRooms.size}")
-            call.respond(HttpStatusCode.OK, mapOf(
-                "deleted_count" to deletedRooms.size,
-                "deleted_room_ids" to deletedRooms
-            ))
+            call.respond(HttpStatusCode.OK, mapOf("message" to "All music rooms cleared"))
         }
+
     }
 }

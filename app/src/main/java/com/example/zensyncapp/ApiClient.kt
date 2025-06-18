@@ -6,6 +6,7 @@ import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.logging.*
 import io.ktor.client.plugins.websocket.*
+import io.ktor.client.request.delete
 import io.ktor.client.request.header
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
@@ -45,6 +46,24 @@ object ApiClient {
 
     fun setAuthToken(token: String?) {
         authToken = token
+    }
+
+    suspend fun clearAllMeditationRooms(): Boolean {
+        return try {
+            val response = httpClient.delete("/api/meditation/rooms/clear-all")
+            response.status == HttpStatusCode.OK
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun clearAllMusicRooms(): Boolean {
+        return try {
+            val response = httpClient.delete("/api/music/rooms/clear-all")
+            response.status == HttpStatusCode.OK
+        } catch (e: Exception) {
+            false
+        }
     }
 
     fun setUserId(id: String?) {

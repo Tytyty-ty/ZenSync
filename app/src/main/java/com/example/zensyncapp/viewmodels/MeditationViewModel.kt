@@ -36,7 +36,7 @@ class MeditationViewModel(application: Application) : BaseRoomViewModel(applicat
 
     override fun setupWebSocketListeners(webSocketManager: WebSocketManager) {
         viewModelScope.launch {
-                _webSocketManager?.timerState?.collect { timerState ->
+            _webSocketManager?.timerState?.collect { timerState ->
                 _showTimerControls.value = true
                 _timerText.value = formatTime(timerState.currentTime)
 
@@ -92,6 +92,7 @@ class MeditationViewModel(application: Application) : BaseRoomViewModel(applicat
                     val room = response.body<MeditationRoom>()
                     _currentRoom.value = room
                     joinRoom(room.id)
+                    fetchRooms()
                 } else {
                     _error.value = response.bodyAsText() ?: "Failed to create room"
                 }
@@ -145,5 +146,22 @@ class MeditationViewModel(application: Application) : BaseRoomViewModel(applicat
         val minutes = seconds / 60
         val remainingSeconds = seconds % 60
         return String.format("%d:%02d", minutes, remainingSeconds)
+    }
+
+    fun clearAllRooms() {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val success = ApiClient.clearAllMeditationRooms()
+                if (success) {
+                    _rooms.value = emptyList()
+                }
+            } catch (e: Exception) {
+                _error.value = "Failed to clear rooms: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+
+        }
     }
 }

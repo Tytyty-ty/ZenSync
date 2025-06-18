@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.zensyncapp.models.MusicRoom
 import com.example.zensyncapp.models.SpotifyPlaylist
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -155,6 +156,7 @@ fun SettingsScreen() {
     var notificationsEnabled by remember { mutableStateOf(true) }
     var isSpotifyConnected by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Настройки", style = MaterialTheme.typography.titleLarge)
@@ -249,6 +251,42 @@ fun SettingsScreen() {
                 checked = notificationsEnabled,
                 onCheckedChange = { notificationsEnabled = it }
             )
+        }
+        Column(modifier = Modifier.padding(16.dp)) {
+            Button(
+                onClick = {
+                    scope.launch {
+                        val success = ApiClient.clearAllMeditationRooms()
+                        Toast.makeText(
+                            context,
+                            if (success) "Все медитационные комнаты очищены" else "Ошибка очистки",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text("Очистить ВСЕ медитационные комнаты")
+            }
+            Button(
+                onClick = {
+                    scope.launch {
+                        val success = ApiClient.clearAllMusicRooms()
+                        Toast.makeText(
+                            context,
+                            if (success) "Все музыкальные комнаты очищены" else "Ошибка очистки",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text("Очистить ВСЕ музыкальные комнаты")
+            }
         }
     }
 }

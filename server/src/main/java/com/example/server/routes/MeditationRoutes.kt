@@ -16,6 +16,7 @@ import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.JoinType
+import org.jetbrains.exposed.sql.deleteAll
 import org.jetbrains.exposed.sql.update
 import java.time.LocalDateTime
 
@@ -139,6 +140,8 @@ fun Route.meditationRoutes() {
                 ?: call.respond(HttpStatusCode.NotFound, "Room not found")
         }
 
+
+
         post("/rooms/{id}/start") {
             val roomId = call.parameters["id"]?.toIntOrNull() ?: run {
                 call.respond(HttpStatusCode.BadRequest, "Invalid room ID")
@@ -230,37 +233,12 @@ fun Route.meditationRoutes() {
             call.respond(HttpStatusCode.OK, mapOf("message" to "Left successfully"))
         }
 
-        delete("/rooms/cleanup") {
-            val (deletedCount, deletedIds) = transaction {
-                val allRooms = MeditationRooms.selectAll().map { it[MeditationRooms.id].value }
-
-                if (allRooms.isEmpty()) {
-                    return@transaction Pair(0, emptyList<Int>())
-                }
-
-                val roomsWithParticipants = RoomParticipants
-                    .select {
-                        (RoomParticipants.roomId inList allRooms) and
-                                (RoomParticipants.roomType eq "meditation")
-                    }
-                    .map { it[RoomParticipants.roomId] }
-                    .distinct()
-
-                val emptyRooms = allRooms - roomsWithParticipants
-
-                val deletedIds = emptyRooms.mapNotNull { roomId ->
-                    val deleted = MeditationRooms.deleteWhere { MeditationRooms.id eq roomId }
-                    if (deleted > 0) roomId else null
-                }
-
-                Pair(deletedIds.size, deletedIds)
+        delete("/rooms/clear-all") {
+            transaction {
+                MeditationRooms.deleteAll()
+                RoomParticipants.deleteWhere { RoomParticipants.roomType eq "meditation" }
             }
-
-            println("Deleted ${deletedCount} meditation rooms: ${deletedIds.joinToString()}")
-            call.respond(HttpStatusCode.OK, mapOf(
-                "deleted" to deletedCount,
-                "room_ids" to deletedIds
-            ))
+            call.respond(HttpStatusCode.OK, mapOf("message" to "All meditation rooms cleared"))
         }
     }
 }

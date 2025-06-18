@@ -30,10 +30,8 @@ abstract class BaseRoomViewModel(application: Application) : AndroidViewModel(ap
     protected val _newParticipantNotification = MutableStateFlow<String?>(null)
     val newParticipantNotification: StateFlow<String?> = _newParticipantNotification
 
-    // Изменено: сделаем поле internal и переименуем, чтобы избежать конфликта
     internal var _webSocketManager: WebSocketManager? = null
 
-    // Изменено: переименуем метод, чтобы избежать конфликта с автоматическим setter'ом
     fun setupWebSocketManager(manager: WebSocketManager) {
         _webSocketManager = manager
         setupWebSocketListeners(manager)

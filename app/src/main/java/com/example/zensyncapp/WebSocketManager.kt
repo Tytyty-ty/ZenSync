@@ -68,7 +68,6 @@ class WebSocketManager(private val client: HttpClient) {
                     }
                 }
 
-                // Запрашиваем текущее состояние при подключении
                 sendCommand("get_state")
                 sendCommand("get_participants")
             }

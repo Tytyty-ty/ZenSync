@@ -98,12 +98,17 @@ class MusicViewModel(application: Application) : BaseRoomViewModel(application) 
                     setBody(CreateMusicRoomRequest(name, playlist.id, playlist.name, duration, isPublic))
                 }
 
-                if (response.status == HttpStatusCode.Created) {
-                    val room = response.body<MusicRoom>()
-                    _currentRoom.value = room
-                    _navigateToRoom.value = room.id
-                } else {
-                    _error.value = response.bodyAsText() ?: "Failed to create room"
+                when (response.status) {
+                    HttpStatusCode.Created -> {
+                        val room = response.body<MusicRoom>()
+                        _currentRoom.value = room
+                        _navigateToRoom.value = room.id
+                        fetchRooms()
+                    }
+                    else -> {
+                        val errorText = response.bodyAsText()
+                        _error.value = errorText ?: "Failed to create room"
+                    }
                 }
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to create room"
@@ -173,6 +178,22 @@ class MusicViewModel(application: Application) : BaseRoomViewModel(application) 
                 )
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to load playlists"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun clearAllRooms() {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val success = ApiClient.clearAllMusicRooms()
+                if (success) {
+                    _rooms.value = emptyList()
+                }
+            } catch (e: Exception) {
+                _error.value = "Failed to clear rooms: ${e.message}"
             } finally {
                 _isLoading.value = false
             }
