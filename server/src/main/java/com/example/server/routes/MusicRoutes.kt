@@ -193,14 +193,14 @@ fun Route.musicRoutes() {
             }
 
             val result = transaction {
-                // 1. Удаляем участника
+
                 RoomParticipants.deleteWhere {
                     (RoomParticipants.roomId eq roomId) and
                             (RoomParticipants.roomType eq "music") and
                             (RoomParticipants.userId eq userId)
                 }
 
-                // 2. Проверяем, остались ли участники
+
                 val participantsLeft = RoomParticipants
                     .select {
                         (RoomParticipants.roomId eq roomId) and
@@ -208,7 +208,7 @@ fun Route.musicRoutes() {
                     }
                     .count()
 
-                // 3. Если участников нет - удаляем комнату
+
                 if (participantsLeft == 0L) {
                     MusicRooms.deleteWhere { MusicRooms.id eq roomId } > 0
                 } else false
@@ -239,10 +239,10 @@ fun Route.musicRoutes() {
 
         delete("/rooms/cleanup") {
             val deletedRooms = transaction {
-                // 1. Получаем все музыкальные комнаты
+
                 val allMusicRooms = MusicRooms.selectAll().map { it[MusicRooms.id].value }
 
-                // 2. Для каждой комнаты проверяем наличие участников
+
                 val emptyRooms = mutableListOf<Int>()
 
                 allMusicRooms.forEach { roomId ->
@@ -258,7 +258,7 @@ fun Route.musicRoutes() {
                     }
                 }
 
-                // 3. Удаляем пустые комнаты
+
                 emptyRooms.mapNotNull { roomId ->
                     if (MusicRooms.deleteWhere { MusicRooms.id eq roomId } > 0) {
                         roomId

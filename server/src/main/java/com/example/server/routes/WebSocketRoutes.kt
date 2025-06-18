@@ -51,17 +51,13 @@ fun Route.webSocketRoutes() {
                 // Добавляем участника и уведомляем всех
                 if (userId != null && username != null) {
                     roomData.participants[userId] = username
-                    // Отправляем обновленный список всем участникам
                     roomData.broadcast("participants:${roomData.participants.values.joinToString(",")}")
-                    // Отправляем уведомление о новом участнике
                     roomData.broadcast("new_participant:$username")
                 }
 
-                // Отправляем текущее состояние новому участнику
                 session.send(Frame.Text("duration:${roomData.duration}"))
                 session.send(Frame.Text("time:${roomData.currentTime}"))
                 session.send(Frame.Text(if (roomData.isPlaying) "play" else "pause"))
-                // Отправляем текущий список участников новому подключению
                 session.send(Frame.Text("participants:${roomData.participants.values.joinToString(",")}"))
 
                 incoming.consumeEach { frame ->
@@ -130,9 +126,7 @@ fun Route.webSocketRoutes() {
                 // Добавляем участника и уведомляем всех
                 if (userId != null && username != null) {
                     roomData.participants[userId] = username
-                    // Отправляем обновленный список всем участникам
                     roomData.broadcast("participants:${roomData.participants.values.joinToString(",")}")
-                    // Отправляем уведомление о новом участнике
                     roomData.broadcast("new_participant:$username")
                 }
 
