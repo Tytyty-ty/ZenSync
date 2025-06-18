@@ -164,4 +164,24 @@ class MeditationViewModel(application: Application) : BaseRoomViewModel(applicat
 
         }
     }
+
+    fun fetchRooms(forceRefresh: Boolean = false) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val response = ApiClient.httpClient.get("/api/meditation/rooms") {
+                    if (forceRefresh) {
+                        parameter("force", "true")
+                    }
+                }
+                if (response.status == HttpStatusCode.OK) {
+                    _rooms.value = response.body()
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Failed to fetch rooms"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
 }

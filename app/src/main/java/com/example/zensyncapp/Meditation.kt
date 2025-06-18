@@ -28,6 +28,9 @@ import com.example.zensyncapp.models.AuthResponse
 import com.example.zensyncapp.models.MeditationRoom
 import com.example.zensyncapp.network.WebSocketManager
 import com.example.zensyncapp.viewmodels.MeditationViewModel
+import com.google.accompanist.swiperefresh.SwipeRefresh
+import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
+import kotlinx.coroutines.launch
 
 
 @SuppressLint("StateFlowValueCalledInComposition")
@@ -130,6 +133,8 @@ fun JoinMeditationRoomScreen(
     val rooms by viewModel.rooms.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
     val isLoading by viewModel.isLoading.collectAsState()
+    var isRefreshing by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         viewModel.fetchRooms()
@@ -156,32 +161,47 @@ fun JoinMeditationRoomScreen(
             )
         }
 
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else if (rooms.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Нет доступных комнат")
-            }
-        } else {
-            LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
-                items(
-                    items = rooms.filter { room ->
-                        room.name.contains(searchQuery, ignoreCase = true) ||
-                                room.creator.contains(searchQuery, ignoreCase = true) ||
-                                room.goal?.contains(searchQuery, ignoreCase = true) ?: false
-                    },
-                    key = { it.id }
-                ) { room ->
-                    MeditationRoomCard(
-                        room = room,
-                        onClick = {
-                            viewModel.joinRoom(room.id)
-                            navController.navigate("LiveMeditationSession/${room.id}")
+        SwipeRefresh(
+            state = rememberSwipeRefreshState(isRefreshing),
+            onRefresh = {
+                coroutineScope.launch {
+                    isRefreshing = true
+                    viewModel.fetchRooms(forceRefresh = true)
+                    isRefreshing = false
+                }
+            },
+            modifier = Modifier.weight(1f)
+        ) {
+            when {
+                isLoading && rooms.isEmpty() -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+                rooms.isEmpty() -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Нет доступных комнат")
+                    }
+                }
+                else -> {
+                    LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        items(
+                            rooms.filter { room ->
+                                room.name.contains(searchQuery, ignoreCase = true) ||
+                                        room.creator.contains(searchQuery, ignoreCase = true) ||
+                                        room.goal?.contains(searchQuery, ignoreCase = true) ?: false
+                            }
+                        ) { room ->
+                            MeditationRoomCard(
+                                room = room,
+                                onClick = {
+                                    viewModel.joinRoom(room.id)
+                                    navController.navigate("LiveMeditationSession/${room.id}")
+                                }
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    }
                 }
             }
         }

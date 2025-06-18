@@ -199,4 +199,24 @@ class MusicViewModel(application: Application) : BaseRoomViewModel(application) 
             }
         }
     }
+
+    fun fetchRooms(forceRefresh: Boolean = false) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val response = ApiClient.httpClient.get("/api/music/rooms") {
+                    if (forceRefresh) {
+                        parameter("force", "true")
+                    }
+                }
+                if (response.status == HttpStatusCode.OK) {
+                    _rooms.value = response.body()
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Failed to fetch rooms"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
 }
