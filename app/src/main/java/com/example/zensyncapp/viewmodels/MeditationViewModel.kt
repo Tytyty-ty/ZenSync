@@ -1,99 +1,42 @@
 package com.example.zensyncapp.viewmodels
 
 import android.app.Application
-import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.zensyncapp.ApiClient
 import com.example.zensyncapp.models.MeditationRoom
 import com.example.zensyncapp.models.CreateMeditationRoomRequest
-import com.example.zensyncapp.WebSocketService
 import com.example.zensyncapp.network.WebSocketManager
 import io.ktor.client.call.body
 import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-class MeditationViewModel(application: Application) : AndroidViewModel(application) {
+class MeditationViewModel(application: Application) : BaseRoomViewModel(application) {
     private val _rooms = MutableStateFlow<List<MeditationRoom>>(emptyList())
     val rooms: StateFlow<List<MeditationRoom>> = _rooms
 
     private val _currentRoom = MutableStateFlow<MeditationRoom?>(null)
     val currentRoom: StateFlow<MeditationRoom?> = _currentRoom
 
-    private val _navigateToRoom = MutableStateFlow<String?>(null)
-    val navigateToRoom: StateFlow<String?> = _navigateToRoom
-
-    private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error
-
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading
-
-    private val _navigationEvent = MutableStateFlow<String?>(null)
-    val navigationEvent: StateFlow<String?> = _navigationEvent
-
-    private val _roomParticipants = MutableStateFlow<List<String>>(emptyList())
-    val roomParticipants: StateFlow<List<String>> = _roomParticipants
-
-    private val _refreshInterval = MutableStateFlow(5000L)
-    private var refreshJob: Job? = null
-
-    private val _isRefreshing = MutableStateFlow(false)
-    val isRefreshing: StateFlow<Boolean> = _isRefreshing
+    private val _timerText = MutableStateFlow("0:00")
+    val timerText: StateFlow<String> = _timerText
 
     private val _showTimerControls = MutableStateFlow(false)
     val showTimerControls: StateFlow<Boolean> = _showTimerControls
 
-    private val _timerText = MutableStateFlow("0:00")
-    val timerText: StateFlow<String> = _timerText
-
-    private val _newParticipantNotification = MutableStateFlow<String?>(null)
-    val newParticipantNotification: StateFlow<String?> = _newParticipantNotification
-
     private val _showCompletionDialog = MutableStateFlow(false)
     val showCompletionDialog: StateFlow<Boolean> = _showCompletionDialog
 
-    private var webSocketManager: WebSocketManager? = null
-
-    fun setWebSocketManager(manager: WebSocketManager) {
-        webSocketManager = manager
-        setupWebSocketListeners(manager)
-    }
-
     init {
         fetchRooms()
-        startAutoRefresh()
-        cleanupOldRooms()
     }
 
-    private fun startAutoRefresh() {
-        refreshJob?.cancel()
-        refreshJob = viewModelScope.launch {
-            while (true) {
-                delay(_refreshInterval.value)
-                fetchRooms()
-            }
-        }
-    }
-
-    fun setRefreshInterval(interval: Long) {
-        _refreshInterval.value = interval
-        startAutoRefresh()
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        refreshJob?.cancel()
-    }
-
-    private fun setupWebSocketListeners(webSocketManager: WebSocketManager) {
+    override fun setupWebSocketListeners(webSocketManager: WebSocketManager) {
         viewModelScope.launch {
-            webSocketManager.timerState.collect { timerState ->
+                _webSocketManager?.timerState?.collect { timerState ->
                 _showTimerControls.value = true
                 _timerText.value = formatTime(timerState.currentTime)
 
@@ -114,48 +57,15 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
         }
 
         viewModelScope.launch {
-            webSocketManager.isPlaying.collect { isPlaying ->
-                _showTimerControls.value = isPlaying
-            }
-        }
-
-        viewModelScope.launch {
-            webSocketManager.serverTime.collect { seconds ->
-                val minutes = seconds / 60
-                val remainingSeconds = seconds % 60
-                _timerText.value = String.format("%d:%02d", minutes, remainingSeconds)
-
-                // Если таймер на 0 и медитация идет, останавливаем ее
-                if (seconds <= 0 && webSocketManager.isPlaying.value) {
-                    webSocketManager.sendCommand("pause")
-                }
-            }
-        }
-
-        viewModelScope.launch {
             webSocketManager.newParticipantNotification.collect { notification ->
-                _newParticipantNotification.value = notification
+                notification?.let { handleNewParticipant(it) }
             }
         }
     }
 
-    fun dismissCompletionDialog() {
-        _showCompletionDialog.value = false
-    }
-    fun onNavigationHandled() {
-        _navigationEvent.value = null
-    }
-
-    fun onRoomNavigated() {
-        _navigateToRoom.value = null
-    }
-
-    fun fetchRooms(forceRefresh: Boolean = false) {
+    fun fetchRooms() {
         viewModelScope.launch {
             _isLoading.value = true
-            if (forceRefresh) {
-                _isRefreshing.value = true
-            }
             try {
                 val response = ApiClient.httpClient.get("/api/meditation/rooms")
                 if (response.status == HttpStatusCode.OK) {
@@ -165,7 +75,6 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                 _error.value = e.message ?: "Failed to fetch rooms"
             } finally {
                 _isLoading.value = false
-                _isRefreshing.value = false
             }
         }
     }
@@ -179,18 +88,12 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                     setBody(CreateMeditationRoomRequest(name, duration, goal, isPublic))
                 }
 
-                when (response.status) {
-                    HttpStatusCode.Created -> {
-                        val room = response.body<MeditationRoom>()
-                        _currentRoom.value = room
-                        joinRoom(room.id)
-                        _navigationEvent.value = room.id
-                        fetchRooms()
-                    }
-                    else -> {
-                        val errorText = response.bodyAsText()
-                        _error.value = errorText ?: "Failed to create room"
-                    }
+                if (response.status == HttpStatusCode.Created) {
+                    val room = response.body<MeditationRoom>()
+                    _currentRoom.value = room
+                    joinRoom(room.id)
+                } else {
+                    _error.value = response.bodyAsText() ?: "Failed to create room"
                 }
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to create room"
@@ -204,28 +107,15 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val response = ApiClient.httpClient.post("/api/meditation/rooms/$roomId/join") {
-                    contentType(ContentType.Application.Json)
-                }
-
-                when (response.status) {
-                    HttpStatusCode.OK -> {
-                        val roomResponse = ApiClient.httpClient.get("/api/meditation/rooms/$roomId")
-                        if (roomResponse.status == HttpStatusCode.OK) {
-                            _currentRoom.value = roomResponse.body()
-                        }
-                        val token = ApiClient.getAuthToken()
-                        WebSocketService.startService(
-                            getApplication(),
-                            roomId,
-                            "meditation",
-                            token
-                        )
+                val response = ApiClient.httpClient.post("/api/meditation/rooms/$roomId/join")
+                if (response.status == HttpStatusCode.OK) {
+                    val roomResponse = ApiClient.httpClient.get("/api/meditation/rooms/$roomId")
+                    if (roomResponse.status == HttpStatusCode.OK) {
+                        _currentRoom.value = roomResponse.body()
+                        _navigateToRoom.value = roomId
                     }
-                    else -> {
-                        val errorText = response.bodyAsText()
-                        _error.value = errorText ?: "Failed to join room"
-                    }
+                } else {
+                    _error.value = response.bodyAsText() ?: "Failed to join room"
                 }
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to join room"
@@ -235,64 +125,25 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun startMeditation(roomId: String, duration: Int) {
+    fun startMeditation(duration: Int) {
         viewModelScope.launch {
-            try {
-                _showTimerControls.value = true
-                webSocketManager?.startMeditation(duration * 60)
-
-                // Обновляем состояние на сервере
-                val response = ApiClient.httpClient.post("/api/meditation/rooms/$roomId/start") {
-                    contentType(ContentType.Application.Json)
-                    setBody(duration)
-                }
-
-                if (response.status != HttpStatusCode.OK) {
-                    _error.value = "Failed to update server state"
-                }
-            } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to start meditation"
-            }
+            _webSocketManager?.startMeditation(duration * 60)
         }
+    }
+
+    fun toggleMeditation() {
+        viewModelScope.launch {
+            _webSocketManager?.toggleMeditation()
+        }
+    }
+
+    fun dismissCompletionDialog() {
+        _showCompletionDialog.value = false
     }
 
     private fun formatTime(seconds: Int): String {
         val minutes = seconds / 60
         val remainingSeconds = seconds % 60
         return String.format("%d:%02d", minutes, remainingSeconds)
-    }
-
-    fun cleanupOldRooms() {
-        viewModelScope.launch {
-            try {
-                val response = ApiClient.httpClient.delete("/api/meditation/rooms/cleanup")
-                if (response.status == HttpStatusCode.OK) {
-                    fetchRooms()
-                }
-            } catch (e: Exception) {
-                _error.value = "Failed to cleanup rooms: ${e.message}"
-            }
-        }
-    }
-
-    fun leaveRoom(roomId: String) {
-        viewModelScope.launch {
-            try {
-                ApiClient.httpClient.post("/api/meditation/rooms/$roomId/leave") {
-                    contentType(ContentType.Application.Json)
-                }
-                _currentRoom.value = null
-                WebSocketService.stopService(getApplication())
-                fetchRooms()
-            } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to leave room"
-            }
-        }
-    }
-
-    fun toggleMeditation() {
-        viewModelScope.launch {
-            webSocketManager?.toggleMeditation()
-        }
     }
 }

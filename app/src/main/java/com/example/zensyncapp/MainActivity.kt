@@ -4,21 +4,16 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.*
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.zensyncapp.network.WebSocketManager
-import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
 import com.example.zensyncapp.ui.theme.ZenSyncAppTheme
-import com.example.zensyncapp.viewmodels.AuthViewModel
-import com.example.zensyncapp.viewmodels.MeditationViewModel
-import com.example.zensyncapp.viewmodels.MusicViewModel
+import com.example.zensyncapp.viewmodels.*
+
 
 class MainActivity : ComponentActivity() {
     private val webSocketManager by lazy { WebSocketManager(ApiClient.httpClient) }
@@ -27,90 +22,50 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (intent?.hasExtra("roomId") == true) {
-            val roomId = intent.getStringExtra("roomId") ?: ""
-            val roomType = intent.getStringExtra("roomType") ?: "meditation"
-            val token = ApiClient.getAuthToken()
-            WebSocketService.startService(this, roomId, roomType, token)
-        }
-
         setContent {
             ZenSyncAppTheme {
                 val navController = rememberNavController()
                 val authViewModel: AuthViewModel = viewModel()
-                val meditationViewModel: MeditationViewModel = viewModel()
-
-
-                LaunchedEffect(authViewModel.currentUser.value) {
-                    authViewModel.currentUser.value?.let { user ->
-                        ApiClient.setAuthToken(user.token)
-                        ApiClient.setUserId(user.userId)
-                    }
-                }
+                val currentUser by authViewModel.currentUser.collectAsState()
 
                 NavHost(
                     navController = navController,
                     startDestination = "WelcomeScreen"
                 ) {
-                    composable("WelcomeScreen") {
-                        WelcomeScreen(navController)
-                    }
+                    composable("WelcomeScreen") { WelcomeScreen(navController) }
+                    composable("LoginScreen") { LoginScreen(navController, authViewModel) }
+                    composable("RegisterScreen") { RegisterScreen(navController, authViewModel) }
+                    composable("MainHub") { MainHub(navController) }
 
-                    composable("LoginScreen") {
-                        LoginScreen(navController, authViewModel)
-                    }
-
-                    composable("RegisterScreen") {
-                        RegisterScreen(navController, authViewModel)
-                    }
-
-                    composable("MainHub") {
-                        MainHub(navController)
-                    }
-
+                    // Медитационные комнаты
                     composable("CreateMeditationRoom/{goal}") { backStackEntry ->
                         val goal = backStackEntry.arguments?.getString("goal") ?: ""
-                        val meditationViewModel: MeditationViewModel = viewModel()
-
-                        LaunchedEffect(meditationViewModel.navigateToRoom.value) {
-                            meditationViewModel.navigateToRoom.value?.let { roomId ->
-                                navController.navigate("LiveMeditationSession/$roomId") {
-                                    popUpTo("CreateMeditationRoom/{goal}") { inclusive = true }
-                                }
-                                meditationViewModel.onRoomNavigated()
-                            }
-                        }
-
-                        CreateMeditationRoomScreen(
-                            navController = navController,
-                            meditationGoal = goal,
-                            viewModel = meditationViewModel
-                        )
+                        val viewModel: MeditationViewModel = viewModel()
+                        RoomNavigationHandler(navController, viewModel)
+                        CreateMeditationRoomScreen(navController, goal, viewModel)
                     }
 
                     composable("JoinMeditationRoom") {
-                        val meditationViewModel: MeditationViewModel = viewModel()
-                        JoinMeditationRoomScreen(
-                            navController = navController,
-                            viewModel = meditationViewModel
-                        )
+                        val viewModel: MeditationViewModel = viewModel()
+                        JoinMeditationRoomScreen(navController, viewModel)
                     }
 
                     composable("LiveMeditationSession/{roomId}") { backStackEntry ->
                         val roomId = backStackEntry.arguments?.getString("roomId") ?: ""
-                        val meditationViewModel: MeditationViewModel = viewModel()
-                        val authViewModel: AuthViewModel = viewModel()
-                        val currentUser = authViewModel.currentUser.value
+                        val viewModel: MeditationViewModel = viewModel()
 
                         LaunchedEffect(roomId) {
-                            webSocketManager.connectToMeditationRoom(
-                                roomId = roomId,
-                                authToken = ApiClient.getAuthToken(),
-                                userId = currentUser?.userId,
-                                username = currentUser?.username
-                            )
-                            // Устанавливаем WebSocketManager в ViewModel
-                            meditationViewModel.setWebSocketManager(webSocketManager)
+                            currentUser?.let { user ->
+                                webSocketManager.connectToRoom(
+                                    roomId = roomId,
+                                    roomType = "meditation",
+                                    authToken = user.token,
+                                    userId = user.userId,
+                                    username = user.username
+                                )
+                                viewModel.setupWebSocketManager(webSocketManager)
+                                viewModel.joinRoom(roomId)
+                            }
                         }
 
                         DisposableEffect(Unit) {
@@ -122,47 +77,46 @@ class MainActivity : ComponentActivity() {
                         LiveMeditationScreen(
                             navController = navController,
                             roomId = roomId,
-                            viewModel = meditationViewModel,
+                            viewModel = viewModel,
                             webSocketManager = webSocketManager,
                             currentUser = currentUser
                         )
                     }
 
+                    // Музыкальные комнаты
                     composable("CreateMusicRoom") {
-                        val musicViewModel: MusicViewModel = viewModel()
-                        CreateMusicRoomScreen(
-                            navController = navController,
-                            viewModel = musicViewModel
-                        )
+                        val viewModel: MusicViewModel = viewModel()
+                        RoomNavigationHandler(navController, viewModel)
+                        CreateMusicRoomScreen(navController, viewModel)
                     }
 
                     composable("JoinMusicRoom") {
-                        val musicViewModel: MusicViewModel = viewModel()
-                        MusicRoomListScreen(
-                            navController = navController,
-                            viewModel = musicViewModel
-                        )
+                        val viewModel: MusicViewModel = viewModel()
+                        MusicRoomListScreen(navController, viewModel)
                     }
 
                     composable("MusicRoom/{roomId}") { backStackEntry ->
                         val roomId = backStackEntry.arguments?.getString("roomId") ?: ""
-                        val musicViewModel: MusicViewModel = viewModel()
-                        val authViewModel: AuthViewModel = viewModel()
-                        val currentUser = authViewModel.currentUser.value
+                        val viewModel: MusicViewModel = viewModel()
 
                         LaunchedEffect(roomId) {
-                            webSocketManager.connectToMusicRoom(
-                                roomId = roomId,
-                                authToken = ApiClient.getAuthToken(),
-                                userId = currentUser?.userId,
-                                username = currentUser?.username
-                            )
+                            currentUser?.let { user ->
+                                webSocketManager.connectToRoom(
+                                    roomId = roomId,
+                                    roomType = "music",
+                                    authToken = user.token,
+                                    userId = user.userId,
+                                    username = user.username
+                                )
+                                viewModel.setupWebSocketManager(webSocketManager)
+                                viewModel.joinMusicRoom(roomId)
+                            }
                         }
 
                         DisposableEffect(Unit) {
                             onDispose {
                                 webSocketManager.disconnect()
-                                musicViewModel.leaveRoom(roomId)
+                                viewModel.leaveRoom(roomId, "music")
                             }
                         }
 
@@ -170,14 +124,36 @@ class MainActivity : ComponentActivity() {
                             navController = navController,
                             roomId = roomId,
                             webSocketManager = webSocketManager,
-                            viewModel = musicViewModel,
+                            viewModel = viewModel,
                             currentUser = currentUser
                         )
                     }
 
-                    composable("SettingsScreen") {
-                        SettingsScreen()
+                    composable("SettingsScreen") { SettingsScreen() }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun <T : BaseRoomViewModel> RoomNavigationHandler(
+        navController: NavController,
+        viewModel: T
+    ) {
+        LaunchedEffect(viewModel.navigateToRoom) {
+            viewModel.navigateToRoom.collect { roomId ->
+                roomId?.let {
+                    val route = when (viewModel) {
+                        is MeditationViewModel -> "LiveMeditationSession/$roomId"
+                        is MusicViewModel -> "MusicRoom/$roomId"
+                        else -> return@let
                     }
+                    navController.navigate(route) {
+                        popUpTo(navController.currentBackStackEntry?.destination?.route ?: return@navigate) {
+                            inclusive = true
+                        }
+                    }
+                    viewModel.onRoomNavigated()
                 }
             }
         }

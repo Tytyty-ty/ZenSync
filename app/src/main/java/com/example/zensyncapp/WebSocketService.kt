@@ -8,30 +8,30 @@ import com.example.zensyncapp.network.WebSocketManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
 
 class WebSocketService : Service() {
     private val webSocketManager = WebSocketManager(ApiClient.httpClient)
-    private val serviceJob = Job()
-    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
-
-    private var roomId: String = ""
-    private var roomType: String = ""
+    private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        roomId = intent?.getStringExtra("roomId") ?: ""
-        roomType = intent?.getStringExtra("roomType") ?: "meditation"
-        val token = intent?.getStringExtra("token")
-        val userId = ApiClient.getUserId()
-        val username: String? = null
+        val roomId = intent?.getStringExtra("roomId") ?: return START_NOT_STICKY
+        val roomType = intent.getStringExtra("roomType") ?: "meditation"
+        val token = intent.getStringExtra("token")
+        val userId = intent.getStringExtra("userId")
+        val username = intent.getStringExtra("username")
 
         serviceScope.launch {
-            when (roomType) {
-                "meditation" -> webSocketManager.connectToMeditationRoom(roomId, token, userId, username)
-                "music" -> webSocketManager.connectToMusicRoom(roomId, token, userId, username)
-            }
+            webSocketManager.connectToRoom(
+                roomId = roomId,
+                roomType = roomType,
+                authToken = token,
+                userId = userId,
+                username = username
+            )
         }
 
         return START_STICKY
@@ -40,7 +40,7 @@ class WebSocketService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         webSocketManager.disconnect()
-        serviceJob.cancel()
+        serviceScope.coroutineContext.cancelChildren()
     }
 
     companion object {
@@ -52,19 +52,17 @@ class WebSocketService : Service() {
             userId: String? = null,
             username: String? = null
         ) {
-            val intent = Intent(context, WebSocketService::class.java).apply {
+            context.startService(Intent(context, WebSocketService::class.java).apply {
                 putExtra("roomId", roomId)
                 putExtra("roomType", roomType)
                 token?.let { putExtra("token", it) }
                 userId?.let { putExtra("userId", it) }
                 username?.let { putExtra("username", it) }
-            }
-            context.startService(intent)
+                })
         }
 
         fun stopService(context: Context) {
-            val intent = Intent(context, WebSocketService::class.java)
-            context.stopService(intent)
+            context.stopService(Intent(context, WebSocketService::class.java))
         }
     }
 }

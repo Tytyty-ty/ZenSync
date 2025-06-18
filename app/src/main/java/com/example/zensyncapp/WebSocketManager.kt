@@ -1,7 +1,6 @@
 package com.example.zensyncapp.network
 
 import androidx.compose.runtime.*
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import io.ktor.client.*
 import io.ktor.client.plugins.websocket.*
 import io.ktor.client.request.header
@@ -15,7 +14,6 @@ class WebSocketManager(private val client: HttpClient) {
     private var session: DefaultClientWebSocketSession? = null
     private var job: Job? = null
     private var timerJob: Job? = null
-    private val messageChannel = Channel<String>(Channel.UNLIMITED)
 
     private val _participantUpdates = MutableStateFlow<List<String>>(emptyList())
     val participantUpdates: StateFlow<List<String>> = _participantUpdates
@@ -23,40 +21,14 @@ class WebSocketManager(private val client: HttpClient) {
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying
 
-    private val _participants = mutableStateListOf<String>()
-    val participants: SnapshotStateList<String> = _participants
-
     private val _currentTime = MutableStateFlow(0)
     val currentTime: StateFlow<Int> = _currentTime
-
-    private val _roomDuration = MutableStateFlow(0)
-    val roomDuration: StateFlow<Int> = _roomDuration
-
-    private val _messages = mutableStateListOf<String>()
-    val messages: SnapshotStateList<String> = _messages
-
-    private val _remainingTime = MutableStateFlow(0)
-    val remainingTime: StateFlow<Int> = _remainingTime
 
     private val _timerState = MutableStateFlow(TimerState())
     val timerState: StateFlow<TimerState> = _timerState
 
-    private val _serverTime = MutableStateFlow(0)
-    val serverTime: StateFlow<Int> = _serverTime
-
     private val _newParticipantNotification = MutableStateFlow<String?>(null)
     val newParticipantNotification: StateFlow<String?> = _newParticipantNotification
-
-    fun initializeRoom(durationMinutes: Int) {
-        _roomDuration.value = durationMinutes * 60
-        _remainingTime.value = durationMinutes * 60
-        _serverTime.value = durationMinutes * 60
-    }
-
-    fun setInitialTime(minutes: Int) {
-        _remainingTime.value = minutes * 60
-        _serverTime.value = minutes * 60
-    }
 
     data class TimerState(
         val currentTime: Int = 0,
@@ -64,87 +36,14 @@ class WebSocketManager(private val client: HttpClient) {
         val duration: Int = 0
     )
 
-    sealed class ConnectionState {
-        object CONNECTED : ConnectionState()
-        object DISCONNECTED : ConnectionState()
-        object CONNECTING : ConnectionState()
-        data class ERROR(val message: String) : ConnectionState()
-    }
-
-    private val _connectionState = mutableStateOf<ConnectionState>(ConnectionState.DISCONNECTED)
-    val connectionState: State<ConnectionState> = _connectionState
-
-    suspend fun connectToMeditationRoom(
+    suspend fun connectToRoom(
         roomId: String,
+        roomType: String,
         authToken: String? = null,
         userId: String? = null,
         username: String? = null
     ) {
         try {
-            _connectionState.value = ConnectionState.CONNECTING
-            session?.close()
-            timerJob?.cancel()
-
-            session = client.webSocketSession {
-                // ... существующий код подключения ...
-            }
-
-            job = CoroutineScope(Dispatchers.IO).launch {
-                _connectionState.value = ConnectionState.CONNECTED
-
-                // Запрашиваем текущее состояние комнаты при подключении
-                sendCommand("get_state")
-
-                launch {
-                    try {
-                        session?.incoming?.consumeAsFlow()?.collect { frame ->
-                            if (frame is Frame.Text) {
-                                val message = frame.readText()
-                                handleMessage(message)
-                            }
-                        }
-                    } catch (e: Exception) {
-                        _connectionState.value = ConnectionState.ERROR(e.message ?: "Connection error")
-                    }
-                }
-
-                launch {
-                    for (message in messageChannel) {
-                        handleMessage(message)
-                    }
-                }
-            }
-
-            timerJob = CoroutineScope(Dispatchers.IO).launch {
-                while (true) {
-                    delay(1000)
-                    if (isPlaying.value && _serverTime.value > 0) {
-                        _serverTime.value = _serverTime.value - 1
-                        if (_serverTime.value <= 0) {
-                            _isPlaying.value = false
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            _connectionState.value = ConnectionState.ERROR(e.message ?: "Connection failed")
-        }
-    }
-    private suspend fun broadcast(message: String) {
-        try {
-            session?.send(Frame.Text(message))
-        } catch (e: Exception) {
-            _connectionState.value = ConnectionState.ERROR("Failed to broadcast: ${e.message}")
-        }
-    }
-    suspend fun connectToMusicRoom(
-        roomId: String,
-        authToken: String? = null,
-        userId: String? = null,
-        username: String? = null
-    ) {
-        try {
-            _connectionState.value = ConnectionState.CONNECTING
             session?.close()
             timerJob?.cancel()
 
@@ -153,119 +52,66 @@ class WebSocketManager(private val client: HttpClient) {
                     protocol = URLProtocol.WS
                     host = "192.168.3.6"
                     port = 8081
-                    path("ws/music/$roomId")
+                    path("ws/$roomType/$roomId")
                 }
-                authToken?.let {
-                    header(HttpHeaders.Authorization, "Bearer $it")
-                }
-                userId?.let {
-                    header("X-User-Id", it)
-                }
-                username?.let {
-                    header("X-Username", it)
-                }
+                authToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                userId?.let { header("X-User-Id", it) }
+                username?.let { header("X-Username", it) }
             }
 
             job = CoroutineScope(Dispatchers.IO).launch {
-                _connectionState.value = ConnectionState.CONNECTED
-
                 launch {
-                    try {
-                        session?.incoming?.consumeAsFlow()?.collect { frame ->
-                            if (frame is Frame.Text) {
-                                val message = frame.readText()
-                                handleMusicMessage(message)
-                            }
+                    session?.incoming?.consumeAsFlow()?.collect { frame ->
+                        if (frame is Frame.Text) {
+                            handleMessage(frame.readText(), roomType)
                         }
-                    } catch (e: Exception) {
-                        _connectionState.value = ConnectionState.ERROR(e.message ?: "Music connection error")
                     }
                 }
 
-                launch {
-                    for (message in messageChannel) {
-                        handleMusicMessage(message)
+                // Запрашиваем текущее состояние при подключении
+                sendCommand("get_state")
+                sendCommand("get_participants")
+            }
+
+            startTimerJob()
+        } catch (e: Exception) {
+            disconnect()
+            throw e
+        }
+    }
+
+    private fun startTimerJob() {
+        timerJob?.cancel()
+        timerJob = CoroutineScope(Dispatchers.IO).launch {
+            while (true) {
+                delay(1000)
+                if (_timerState.value.isPlaying && _timerState.value.currentTime > 0) {
+                    _timerState.value = _timerState.value.copy(
+                        currentTime = _timerState.value.currentTime - 1
+                    )
+                    if (_timerState.value.currentTime <= 0) {
+                        _timerState.value = _timerState.value.copy(isPlaying = false)
+                        sendCommand("completed")
                     }
                 }
             }
-        } catch (e: Exception) {
-            _connectionState.value = ConnectionState.ERROR(e.message ?: "Music connection failed")
         }
     }
 
-    suspend fun sendCommand(command: String) {
-        println("Sending command: $command") // Логирование исходящих команд
-        try {
-            session?.send(Frame.Text(command))
-        } catch (e: Exception) {
-            println("Failed to send command: ${e.message}")
-            _connectionState.value = ConnectionState.ERROR("Send failed: ${e.message}")
-        }
-    }
-
-    private fun handleMusicMessage(message: String) {
+    private fun handleMessage(message: String, roomType: String) {
         when {
-            message.startsWith("track:") -> {
-                val trackInfo = message.removePrefix("track:")
-                _messages.add("Now playing: $trackInfo")
-            }
-            message.startsWith("playback:") -> {
-                _isPlaying.value = message.removePrefix("playback:") == "play"
-            }
-            message.startsWith("progress:") -> {
-                val progress = message.removePrefix("progress:").toIntOrNull()
-                progress?.let { _currentTime.value = it }
-            }
-            message.startsWith("participants:") -> {
-                val participants = message.removePrefix("participants:").split(",")
-                _participantUpdates.value = participants
-                _participants.clear()
-                _participants.addAll(participants)
-            }
-            message.startsWith("new_participant:") -> {
-                val username = message.removePrefix("new_participant:")
-                _newParticipantNotification.value = "$username присоединился"
-                _participants.add(username)
-                _participantUpdates.value = _participants.toList()
-                // Автоматически скрываем уведомление через 3 секунды
-                CoroutineScope(Dispatchers.IO).launch {
-                    delay(3000)
-                    _newParticipantNotification.value = null
-                }
-            }
-            else -> _messages.add(message)
-        }
-    }
-
-    private fun handleMessage(message: String) {
-        println("Received message: $message")
-        when {
-            message.startsWith("duration:") -> {
-                val duration = message.removePrefix("duration:").toIntOrNull() ?: 0
-                _timerState.value = _timerState.value.copy(duration = duration)
-            }
-            message == "play" -> {
-                _timerState.value = _timerState.value.copy(isPlaying = true)
-                startTimer()
-            }
-            message == "pause" -> {
-                _timerState.value = _timerState.value.copy(isPlaying = false)
-                timerJob?.cancel()
-            }
             message.startsWith("state:") -> {
-                // Обработка начального состояния комнаты
                 val parts = message.removePrefix("state:").split(",")
                 if (parts.size >= 3) {
-                    _serverTime.value = parts[0].toIntOrNull() ?: 0
-                    _isPlaying.value = parts[1].toBoolean()
-                    _roomDuration.value = parts[2].toIntOrNull() ?: 0
+                    _timerState.value = TimerState(
+                        currentTime = parts[0].toIntOrNull() ?: 0,
+                        isPlaying = parts[1].toBoolean(),
+                        duration = parts[2].toIntOrNull() ?: 0
+                    )
                 }
             }
-            message == "get_participants" -> {
-                CoroutineScope(Dispatchers.IO).launch {
-                    sendCommand("get_participants")
-                }
-            }
+            message == "play" -> _timerState.value = _timerState.value.copy(isPlaying = true)
+            message == "pause" -> _timerState.value = _timerState.value.copy(isPlaying = false)
             message.startsWith("time:") -> {
                 val time = message.removePrefix("time:").toIntOrNull() ?: 0
                 _timerState.value = _timerState.value.copy(currentTime = time)
@@ -273,27 +119,23 @@ class WebSocketManager(private val client: HttpClient) {
             message.startsWith("participants:") -> {
                 val participants = message.removePrefix("participants:").split(",")
                 _participantUpdates.value = participants
-                _participants.clear()
-                _participants.addAll(participants)
             }
             message.startsWith("new_participant:") -> {
                 val username = message.removePrefix("new_participant:")
-                _newParticipantNotification.value = "$username присоединился"
-                _participants.add(username)
-                _participantUpdates.value = _participants.toList()
-                // Автоматически скрываем уведомление через 3 секунды
-                CoroutineScope(Dispatchers.IO).launch {
-                    delay(3000)
-                    _newParticipantNotification.value = null
-                }
+                _newParticipantNotification.value = username
             }
+            roomType == "music" && message.startsWith("playback:") -> {
+                _isPlaying.value = message.removePrefix("playback:") == "play"
+            }
+        }
+    }
 
-            message == "completed" -> {
-                _isPlaying.value = false
-                _remainingTime.value = 0
-                _serverTime.value = 0
-            }
-            else -> _messages.add(message)
+    suspend fun sendCommand(command: String) {
+        try {
+            session?.send(Frame.Text(command))
+        } catch (e: Exception) {
+            disconnect()
+            throw e
         }
     }
 
@@ -305,7 +147,6 @@ class WebSocketManager(private val client: HttpClient) {
         )
         sendCommand("duration:$durationSeconds")
         sendCommand("play")
-        startTimer()
     }
 
     suspend fun toggleMeditation() {
@@ -316,7 +157,6 @@ class WebSocketManager(private val client: HttpClient) {
         }
     }
 
-
     suspend fun playMeditation() {
         if (_timerState.value.currentTime <= 0) {
             _timerState.value = _timerState.value.copy(
@@ -325,29 +165,15 @@ class WebSocketManager(private val client: HttpClient) {
         }
         _timerState.value = _timerState.value.copy(isPlaying = true)
         sendCommand("play")
-        startTimer()
     }
 
     suspend fun pauseMeditation() {
         _timerState.value = _timerState.value.copy(isPlaying = false)
         sendCommand("pause")
-        timerJob?.cancel()
     }
 
-    private fun startTimer() {
-        timerJob?.cancel()
-        timerJob = CoroutineScope(Dispatchers.IO).launch {
-            while (_timerState.value.currentTime > 0 && _timerState.value.isPlaying) {
-                delay(1000)
-                _timerState.value = _timerState.value.copy(
-                    currentTime = _timerState.value.currentTime - 1
-                )
-                if (_timerState.value.currentTime <= 0) {
-                    _timerState.value = _timerState.value.copy(isPlaying = false)
-                    sendCommand("completed")
-                }
-            }
-        }
+    suspend fun requestParticipantsUpdate() {
+        sendCommand("get_participants")
     }
 
     fun disconnect() {
@@ -355,21 +181,12 @@ class WebSocketManager(private val client: HttpClient) {
         timerJob?.cancel()
         runBlocking {
             session?.close()
-            messageChannel.close()
         }
         session = null
-        _connectionState.value = ConnectionState.DISCONNECTED
-        _participants.clear()
-        _messages.clear()
+        _timerState.value = TimerState()
+        _participantUpdates.value = emptyList()
         _isPlaying.value = false
         _currentTime.value = 0
-        _roomDuration.value = 0
-        _remainingTime.value = 0
-        _serverTime.value = 0
         _newParticipantNotification.value = null
-    }
-
-    suspend fun requestParticipantsUpdate() {
-        sendCommand("get_participants")
     }
 }

@@ -1,41 +1,25 @@
 package com.example.zensyncapp.viewmodels
 
 import android.app.Application
-import android.widget.Toast
-import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.zensyncapp.ApiClient
-import com.example.zensyncapp.WebSocketService
-import com.example.zensyncapp.models.CreateMusicRoomRequest
-import com.example.zensyncapp.models.MusicRoom
-import com.example.zensyncapp.models.SpotifyPlaylist
+import com.example.zensyncapp.models.*
 import com.example.zensyncapp.network.WebSocketManager
 import com.example.zensyncapp.spotify.SpotifyManager
 import io.ktor.client.call.body
 import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-class MusicViewModel(application: Application) : AndroidViewModel(application) {
+class MusicViewModel(application: Application) : BaseRoomViewModel(application) {
     private val _rooms = MutableStateFlow<List<MusicRoom>>(emptyList())
     val rooms: StateFlow<List<MusicRoom>> = _rooms
-
-    private val spotifyManager = SpotifyManager(application.applicationContext)
-    var isSpotifyConnected by mutableStateOf(false)
-
-    private val _selectedPlaylist = MutableStateFlow<SpotifyPlaylist?>(null)
-    val selectedPlaylist: StateFlow<SpotifyPlaylist?> = _selectedPlaylist
-
-    private val _showPlaylistSelector = MutableStateFlow(false)
-    val showPlaylistSelector: StateFlow<Boolean> = _showPlaylistSelector
 
     private val _currentRoom = MutableStateFlow<MusicRoom?>(null)
     val currentRoom: StateFlow<MusicRoom?> = _currentRoom
@@ -43,52 +27,20 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _spotifyPlaylists = MutableStateFlow<List<SpotifyPlaylist>>(emptyList())
     val spotifyPlaylists: StateFlow<List<SpotifyPlaylist>> = _spotifyPlaylists
 
-    private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error
+    private val _selectedPlaylist = MutableStateFlow<SpotifyPlaylist?>(null)
+    val selectedPlaylist: StateFlow<SpotifyPlaylist?> = _selectedPlaylist
 
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading
+    private val _showPlaylistSelector = MutableStateFlow(false)
+    val showPlaylistSelector: StateFlow<Boolean> = _showPlaylistSelector
 
-    private val _navigateToRoom = MutableStateFlow<String?>(null)
-    val navigateToRoom: StateFlow<String?> = _navigateToRoom
-
-    private val _roomParticipants = MutableStateFlow<List<String>>(emptyList())
-    val roomParticipants: StateFlow<List<String>> = _roomParticipants
-
-    private val _refreshInterval = MutableStateFlow(5000L)
-    private var refreshJob: Job? = null
-
-    private val _isRefreshing = MutableStateFlow(false)
-    val isRefreshing: StateFlow<Boolean> = _isRefreshing
-
-    private val _newParticipantNotification = MutableStateFlow<String?>(null)
-    val newParticipantNotification: StateFlow<String?> = _newParticipantNotification
-
-    private var webSocketManager: WebSocketManager? = null
+    var isSpotifyConnected by mutableStateOf(false)
+    private val spotifyManager = SpotifyManager(application.applicationContext)
 
     init {
         fetchRooms()
-        startAutoRefresh()
-        cleanupOldRooms()
     }
 
-    private fun startAutoRefresh() {
-        refreshJob?.cancel()
-        refreshJob = viewModelScope.launch {
-            while (true) {
-                delay(_refreshInterval.value)
-                fetchRooms()
-            }
-        }
-    }
-
-    fun setWebSocketManager(manager: WebSocketManager) {
-        webSocketManager = manager
-        setupWebSocketListeners(manager)
-    }
-
-
-    fun setupWebSocketListeners(webSocketManager: WebSocketManager) {
+    override fun setupWebSocketListeners(webSocketManager: WebSocketManager) {
         viewModelScope.launch {
             webSocketManager.participantUpdates.collect { participants ->
                 _roomParticipants.value = participants
@@ -100,13 +52,84 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             webSocketManager.newParticipantNotification.collect { notification ->
-                _newParticipantNotification.value = notification
+                notification?.let { handleNewParticipant(it) }
             }
         }
     }
 
-    fun clearError() {
-        _error.value = null
+    fun fetchRooms() {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val response = ApiClient.httpClient.get("/api/music/rooms")
+                if (response.status == HttpStatusCode.OK) {
+                    _rooms.value = response.body()
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Failed to load rooms"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun fetchRoomDetails(roomId: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val response = ApiClient.httpClient.get("/api/music/rooms/$roomId")
+                if (response.status == HttpStatusCode.OK) {
+                    _currentRoom.value = response.body()
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Failed to load room details"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun createMusicRoom(name: String, playlist: SpotifyPlaylist, duration: Int, isPublic: Boolean = true) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val response = ApiClient.httpClient.post("/api/music/rooms") {
+                    contentType(ContentType.Application.Json)
+                    setBody(CreateMusicRoomRequest(name, playlist.id, playlist.name, duration, isPublic))
+                }
+
+                if (response.status == HttpStatusCode.Created) {
+                    val room = response.body<MusicRoom>()
+                    _currentRoom.value = room
+                    _navigateToRoom.value = room.id
+                } else {
+                    _error.value = response.bodyAsText() ?: "Failed to create room"
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Failed to create room"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun joinMusicRoom(roomId: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val response = ApiClient.httpClient.post("/api/music/rooms/$roomId/join")
+                if (response.status == HttpStatusCode.OK) {
+                    fetchRoomDetails(roomId)
+                    _navigateToRoom.value = roomId
+                } else {
+                    _error.value = response.bodyAsText() ?: "Failed to join room"
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Failed to join room"
+            } finally {
+                _isLoading.value = false
+            }
+        }
     }
 
     fun connectSpotify() {
@@ -129,72 +152,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _showPlaylistSelector.value = false
     }
 
-    fun fetchRooms(forceRefresh: Boolean = false) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            if (forceRefresh) {
-                _isRefreshing.value = true
-            }
-            try {
-                val response = ApiClient.httpClient.get("/api/music/rooms")
-                if (response.status == HttpStatusCode.OK) {
-                    _rooms.value = response.body<List<MusicRoom>>()
-                }
-            } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to load rooms"
-            } finally {
-                _isLoading.value = false
-                _isRefreshing.value = false
-            }
-        }
-    }
-
-    fun clearAllRooms() {
+    private fun fetchSpotifyPlaylists() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                // Сначала очищаем локально
-                _rooms.value = emptyList()
-
-                // Затем отправляем запрос на сервер
-                val response = ApiClient.httpClient.delete("/api/music/rooms/cleanup")
-                if (response.status == HttpStatusCode.OK) {
-                    Toast.makeText(getApplication(), "Все комнаты очищены", Toast.LENGTH_SHORT).show()
-                    // Обновляем список комнат
-                    fetchRooms(forceRefresh = true)
-                } else {
-                    _error.value = "Ошибка при очистке комнат: ${response.status}"
-                }
-            } catch (e: Exception) {
-                _error.value = "Failed to cleanup rooms: ${e.message}"
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
-
-    fun fetchRoomDetails(roomId: String) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                val response = ApiClient.httpClient.get("/api/music/rooms/$roomId")
-                if (response.status == HttpStatusCode.OK) {
-                    _currentRoom.value = response.body()
-                } else if (response.status == HttpStatusCode.NotFound) {
-                    _error.value = "Room not found"
-                }
-            } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to load room details"
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
-
-    fun fetchSpotifyPlaylists() {
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
+                // Здесь должна быть реальная загрузка плейлистов из Spotify API
                 _spotifyPlaylists.value = listOf(
                     SpotifyPlaylist(
                         id = "37i9dQZF1DXc5e2bJhV6pu",
@@ -216,106 +178,4 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-
-    fun createMusicRoom(name: String, playlist: SpotifyPlaylist, duration: Int, isPublic: Boolean = true) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                val response = ApiClient.httpClient.post("/api/music/rooms") {
-                    contentType(ContentType.Application.Json)
-                    setBody(
-                        CreateMusicRoomRequest(
-                            name = name,
-                            playlistId = playlist.id,
-                            playlistName = playlist.name,
-                            duration = duration,
-                            isPublic = isPublic
-                        )
-                    )
-                }
-
-                when (response.status) {
-                    HttpStatusCode.Created -> {
-                        val room = response.body<MusicRoom>()
-                        _currentRoom.value = room
-                        _navigateToRoom.value = room.id
-                    }
-                    else -> {
-                        val errorText = response.bodyAsText()
-                        _error.value = errorText ?: "Failed to create room"
-                    }
-                }
-            } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to create room"
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
-
-    fun onRoomNavigated() {
-        _navigateToRoom.value = null
-    }
-
-    fun joinMusicRoom(roomId: String) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                val response = ApiClient.httpClient.post("/api/music/rooms/$roomId/join")
-                if (response.status == HttpStatusCode.OK) {
-                    fetchRoomDetails(roomId)
-                    val token = ApiClient.getAuthToken()
-                    WebSocketService.startService(
-                        getApplication(),
-                        roomId,
-                        "music",
-                        token
-                    )
-                } else {
-                    val errorText = response.bodyAsText()
-                    _error.value = errorText ?: "Failed to join room"
-                }
-            } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to join room"
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
-
-    fun leaveRoom(roomId: String) {
-        viewModelScope.launch {
-            try {
-                ApiClient.httpClient.post("/api/music/rooms/$roomId/leave") {
-                    contentType(ContentType.Application.Json)
-                }
-                _currentRoom.value = null
-                WebSocketService.stopService(getApplication())
-                fetchRooms()
-            } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to leave room"
-            }
-        }
-    }
-
-    fun cleanupOldRooms() {
-        viewModelScope.launch {
-            try {
-                val response = ApiClient.httpClient.delete("/api/music/rooms/cleanup")
-                if (response.status == HttpStatusCode.OK) {
-                    fetchRooms()
-                }
-            } catch (e: Exception) {
-                _error.value = "Failed to cleanup rooms: ${e.message}"
-            }
-        }
-    }
-
-    fun clearRooms() {
-        viewModelScope.launch {
-            _rooms.value = emptyList()
-        }
-    }
-
-
 }

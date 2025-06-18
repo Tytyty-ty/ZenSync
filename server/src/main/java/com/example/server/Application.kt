@@ -85,6 +85,7 @@ fun main() {
                 call.respondText("ZenSync Server is running!")
             }
 
+
             authRoutes()
             meditationRoutes()
             musicRoutes()

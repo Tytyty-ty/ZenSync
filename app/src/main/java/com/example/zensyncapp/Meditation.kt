@@ -17,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -29,12 +28,7 @@ import com.example.zensyncapp.models.AuthResponse
 import com.example.zensyncapp.models.MeditationRoom
 import com.example.zensyncapp.network.WebSocketManager
 import com.example.zensyncapp.viewmodels.MeditationViewModel
-import com.google.accompanist.swiperefresh.SwipeRefresh
-import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
-import io.ktor.client.call.body
-import io.ktor.client.request.get
-import io.ktor.http.HttpStatusCode
-import kotlinx.coroutines.launch
+
 
 @SuppressLint("StateFlowValueCalledInComposition")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,15 +43,6 @@ fun CreateMeditationRoomScreen(
     var isPublic by remember { mutableStateOf(true) }
     val context = LocalContext.current
     val isLoading by viewModel.isLoading.collectAsState()
-
-    LaunchedEffect(viewModel.navigationEvent.value) {
-        viewModel.navigationEvent.value?.let { roomId ->
-            navController.navigate("LiveMeditationSession/$roomId") {
-                popUpTo("CreateMeditationRoom/$meditationGoal") { inclusive = true }
-            }
-            viewModel.onNavigationHandled()
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -144,7 +129,7 @@ fun JoinMeditationRoomScreen(
 ) {
     val rooms by viewModel.rooms.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
-    val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.fetchRooms()
@@ -171,33 +156,32 @@ fun JoinMeditationRoomScreen(
             )
         }
 
-        SwipeRefresh(
-            state = rememberSwipeRefreshState(isRefreshing),
-            onRefresh = { viewModel.fetchRooms(forceRefresh = true) },
-            modifier = Modifier.weight(1f)
-        ) {
-            if (rooms.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Нет доступных комнат")
-                }
-            } else {
-                LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    items(
-                        rooms.filter { room ->
-                            room.name.contains(searchQuery, ignoreCase = true) ||
-                                    room.creator.contains(searchQuery, ignoreCase = true) ||
-                                    room.goal?.contains(searchQuery, ignoreCase = true) ?: false
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else if (rooms.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Нет доступных комнат")
+            }
+        } else {
+            LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
+                items(
+                    items = rooms.filter { room ->
+                        room.name.contains(searchQuery, ignoreCase = true) ||
+                                room.creator.contains(searchQuery, ignoreCase = true) ||
+                                room.goal?.contains(searchQuery, ignoreCase = true) ?: false
+                    },
+                    key = { it.id }
+                ) { room ->
+                    MeditationRoomCard(
+                        room = room,
+                        onClick = {
+                            viewModel.joinRoom(room.id)
+                            navController.navigate("LiveMeditationSession/${room.id}")
                         }
-                    ) { room ->
-                        MeditationRoomCard(
-                            room = room,
-                            onClick = {
-                                viewModel.joinRoom(room.id)
-                                navController.navigate("LiveMeditationSession/${room.id}")
-                            }
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }
@@ -250,96 +234,35 @@ fun LiveMeditationScreen(
     currentUser: AuthResponse?
 ) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
     val isPlaying by webSocketManager.isPlaying.collectAsState()
     val room by viewModel.currentRoom.collectAsState()
     var showEndDialog by remember { mutableStateOf(false) }
-    var showCompletionDialog by remember { mutableStateOf(false) }
     val participants by viewModel.roomParticipants.collectAsState()
     val newParticipantNotification by viewModel.newParticipantNotification.collectAsState()
-    val showTimerControls by viewModel.showTimerControls.collectAsState()
-
-
-    val participantsList = remember(participants, currentUser) {
-        val list = participants.toMutableList()
-        currentUser?.username?.let { username ->
-            if (!list.contains(username)) {
-                list.add(username)
-            }
-        }
-        list.map { if (it == currentUser?.username) "Вы" else it }
-    }
 
     val timerState by webSocketManager.timerState.collectAsState()
-    val timerText by remember {
+    val timerText = remember {
         derivedStateOf {
             val minutes = timerState.currentTime / 60
             val seconds = timerState.currentTime % 60
             String.format("%d:%02d", minutes, seconds)
         }
-    }
+    }.value
 
-    fun toggleMeditation() {
-        viewModel.toggleMeditation()
+    val participantsList = remember(participants, currentUser) {
+        participants.toMutableList().apply {
+            currentUser?.username?.let { if (!contains(it)) add(it) }
+        }.map { if (it == currentUser?.username) "Вы" else it }
     }
 
     LaunchedEffect(Unit) {
-        webSocketManager.sendCommand("get_participants")
         webSocketManager.requestParticipantsUpdate()
     }
 
-    LaunchedEffect(webSocketManager) {
-        viewModel.setWebSocketManager(webSocketManager)
-    }
-
-    LaunchedEffect(roomId) {
-        try {
-            val token = ApiClient.getAuthToken()
-            val userId = currentUser?.userId
-            val username = currentUser?.username
-            webSocketManager.connectToMeditationRoom(roomId, token, userId, username)
-            viewModel.joinRoom(roomId)
-
-            // Загружаем текущее состояние комнаты
-            val roomResponse = ApiClient.httpClient.get("/api/meditation/rooms/$roomId")
-            if (roomResponse.status == HttpStatusCode.OK) {
-                val room = roomResponse.body<MeditationRoom>()
-                // Устанавливаем начальное состояние таймера
-                webSocketManager.setInitialTime(room.duration)
-                // Запрашиваем актуальное состояние у сервера
-                webSocketManager.sendCommand("get_state")
-            }
-        } catch (e: Exception) {
-            Toast.makeText(context, "Ошибка подключения: ${e.message}", Toast.LENGTH_LONG).show()
+    LaunchedEffect(timerState) {
+        if (timerState.currentTime <= 0 && timerState.isPlaying) {
+            webSocketManager.pauseMeditation()
         }
-    }
-
-    LaunchedEffect(timerText) {
-        if (timerText == "0:00" && isPlaying) {
-            webSocketManager.sendCommand("pause")
-            showCompletionDialog = true
-        }
-    }
-
-
-    if (showCompletionDialog) {
-        AlertDialog(
-            onDismissRequest = {
-                navController.navigate("MainHub") { popUpTo(0) }
-            },
-            title = { Text("Медитация завершена!") },
-            text = { Text("Вы молодец! Сеанс прошёл отлично!") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        navController.navigate("MainHub") { popUpTo(0) }
-                    }
-                ) {
-                    Text("OK")
-                }
-            }
-        )
-        return
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -397,29 +320,16 @@ fun LiveMeditationScreen(
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                if (showTimerControls) {
-                    IconButton(
-                        onClick = { toggleMeditation() },
-                        modifier = Modifier.size(80.dp)
-                    ) {
-                        Icon(
-                            if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "Пауза" else "Старт",
-                            tint = Color.White,
-                            modifier = Modifier.size(64.dp)
-                        )
-                    }
-                } else {
-                    Button(
-                        onClick = {
-                            room?.duration?.let { duration ->
-                                viewModel.startMeditation(roomId, duration)
-                            }
-                        },
-                        modifier = Modifier.width(200.dp)
-                    ) {
-                        Text("Начать медитацию")
-                    }
+                IconButton(
+                    onClick = { viewModel.toggleMeditation() },
+                    modifier = Modifier.size(80.dp)
+                ) {
+                    Icon(
+                        if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "Пауза" else "Старт",
+                        tint = Color.White,
+                        modifier = Modifier.size(64.dp)
+                    )
                 }
             }
 
@@ -437,7 +347,7 @@ fun LiveMeditationScreen(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.padding(top = 8.dp)
                 ) {
-                    items(participantsList) { user ->
+                    items(items = participantsList, key = { it }) { user ->
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(
                                 Icons.Default.AccountCircle,
@@ -457,7 +367,6 @@ fun LiveMeditationScreen(
             }
         }
 
-        // Уведомление о новом участнике
         newParticipantNotification?.let { notification ->
             Box(
                 modifier = Modifier
@@ -488,7 +397,7 @@ fun LiveMeditationScreen(
                 Button(
                     onClick = {
                         showEndDialog = false
-                        viewModel.leaveRoom(roomId)
+                        viewModel.leaveRoom(roomId, "meditation")
                         navController.popBackStack()
                     }
                 ) {
@@ -503,51 +412,5 @@ fun LiveMeditationScreen(
                 }
             }
         )
-    }
-}
-
-@Composable
-fun MeditationRoomListScreen(
-    navController: NavController,
-    viewModel: MeditationViewModel
-) {
-    val rooms by viewModel.rooms.collectAsState()
-    var searchQuery by remember { mutableStateOf("") }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            IconButton(onClick = { navController.popBackStack() }) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text("Поиск комнат") },
-                leadingIcon = { Icon(Icons.Default.Search, null) },
-                modifier = Modifier.weight(1f),
-                singleLine = true
-            )
-        }
-
-        LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
-            items(
-                rooms.filter { room ->
-                    room.name.contains(searchQuery, ignoreCase = true) ||
-                            room.creator.contains(searchQuery, ignoreCase = true) ||
-                            (room.goal?.contains(searchQuery, ignoreCase = true) ?: false)
-                }
-            ) { room ->
-                MeditationRoomCard(room = room) {
-                    navController.navigate("LiveMeditationSession/${room.id}")
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-        }
     }
 }

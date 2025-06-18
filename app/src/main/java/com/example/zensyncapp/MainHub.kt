@@ -112,7 +112,6 @@ fun MainHub(navController: NavController) {
 fun MeditationScreen(navController: NavController) {
     val context = LocalContext.current
     var meditationGoal by remember { mutableStateOf("") }
-    var meditationNotes by remember { mutableStateOf("") }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Цели медитации", style = MaterialTheme.typography.titleMedium)

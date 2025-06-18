@@ -26,8 +26,6 @@ import com.example.zensyncapp.models.MusicRoom
 import com.example.zensyncapp.models.SpotifyPlaylist
 import com.example.zensyncapp.network.WebSocketManager
 import com.example.zensyncapp.viewmodels.MusicViewModel
-import com.google.accompanist.swiperefresh.SwipeRefresh
-import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import kotlinx.coroutines.launch
 
 @Composable
@@ -72,7 +70,7 @@ fun MusicRoomScreen(navController: NavController, viewModel: MusicViewModel = vi
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(rooms) { room ->
+                items(items = rooms, key = { it.id }) { room ->
                     MusicRoomCard(
                         room = room,
                         onJoin = { navController.navigate("MusicRoom/${room.id}") }
@@ -183,42 +181,19 @@ fun MusicRoomDetailScreen(
 ) {
     val room by viewModel.currentRoom.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val context = LocalContext.current
     val isPlaying by webSocketManager.isPlaying.collectAsState()
-    val currentTime by webSocketManager.currentTime.collectAsState()
     val participants by viewModel.roomParticipants.collectAsState()
     val newParticipantNotification by viewModel.newParticipantNotification.collectAsState()
 
-    LaunchedEffect(Unit) {
-        webSocketManager.sendCommand("get_participants")
-        webSocketManager.requestParticipantsUpdate()
-        viewModel.setupWebSocketListeners(webSocketManager)
-    }
-
-    LaunchedEffect(roomId) {
-        viewModel.fetchRoomDetails(roomId)
-    }
-
     val participantsList = remember(participants, currentUser) {
-        val list = participants.toMutableList()
-        if (currentUser?.username != null && !list.contains(currentUser.username)) {
-            list.add(currentUser.username)
-        }
-        list.map { if (it == currentUser?.username) "Вы" else it }
+        participants.toMutableList().apply {
+            currentUser?.username?.let { if (!contains(it)) add(it) }
+        }.map { if (it == currentUser?.username) "Вы" else it }
     }
 
-    fun togglePlayback() {
-        viewModel.viewModelScope.launch {
-            if (isPlaying) {
-                webSocketManager.sendCommand("pause")
-            } else {
-                webSocketManager.sendCommand("play")
-            }
-        }
+    LaunchedEffect(Unit) {
+        webSocketManager.requestParticipantsUpdate()
     }
-
-    ParticipantsSection(participants = participantsList)
-
 
     Scaffold(
         topBar = {
@@ -239,131 +214,50 @@ fun MusicRoomDetailScreen(
             when {
                 isLoading -> FullScreenLoading()
                 room == null -> FullScreenError("Не удалось загрузить комнату")
-                else -> MusicRoomContent(
-                    room = room!!,
-                    isPlaying = isPlaying,
-                    currentTime = currentTime,
-                    onPlayPause = { togglePlayback() },
-                    currentUser = currentUser,
-                    participants = participants,
-                    newParticipantNotification = newParticipantNotification
-                )
-            }
-        }
-    }
-    newParticipantNotification?.let { notification ->
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .background(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                    shape = RoundedCornerShape(8.dp)
-                )
-                .padding(8.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = notification,
-                color = Color.White,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-    }
-}
-
-
-@Composable
-private fun MusicRoomContent(
-    room: MusicRoom,
-    isPlaying: Boolean,
-    currentTime: Int,
-    onPlayPause: () -> Unit,
-    currentUser: AuthResponse?,
-    participants: List<String>,
-    newParticipantNotification: String?
-) {
-    val participantsList = remember(participants, currentUser) {
-        val list = participants.toMutableList()
-        if (currentUser?.username != null && !list.contains(currentUser.username)) {
-            list.add(currentUser.username)
-        }
-        list.map { if (it == currentUser?.username) "Вы" else it }
-    }
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
-        ) {
-            RoomInfoSection(room)
-            Spacer(modifier = Modifier.height(24.dp))
-            MusicPlayerSection(
-                room = room,
-                isPlaying = isPlaying,
-                currentTime = currentTime,
-                onPlayPause = onPlayPause
-            )
-            Spacer(modifier = Modifier.height(24.dp))
-            ParticipantsSection(participants = participantsList)
-        }
-
-        // Уведомление о новом участнике
-        newParticipantNotification?.let { notification ->
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                        shape = RoundedCornerShape(8.dp)
+                else -> Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                ) {
+                    RoomInfoSection(room!!)
+                    Spacer(modifier = Modifier.height(24.dp))
+                    PlayerControls(
+                        isPlaying = isPlaying,
+                        onPlayPause = {
+                            viewModel.viewModelScope.launch {
+                                if (isPlaying) {
+                                    webSocketManager.sendCommand("pause")
+                                } else {
+                                    webSocketManager.sendCommand("play")
+                                }
+                            }
+                        }
                     )
-                    .padding(8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = notification,
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    ParticipantsSection(participants = participantsList)
+                }
+            }
+
+            newParticipantNotification?.let { notification ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = notification,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
             }
         }
-    }
-}
-
-@Composable
-private fun MusicRoomContent(
-    room: MusicRoom,
-    isPlaying: Boolean,
-    currentTime: Int,
-    onPlayPause: () -> Unit,
-    currentUser: AuthResponse?,
-    participants: List<String>
-) {
-    val participantsList = remember(participants, currentUser) {
-        val list = participants.toMutableList()
-        if (currentUser?.username != null && !list.contains(currentUser.username)) {
-            list.add(currentUser.username)
-        }
-        list.map { if (it == currentUser?.username) "Вы" else it }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        RoomInfoSection(room)
-        Spacer(modifier = Modifier.height(24.dp))
-        MusicPlayerSection(
-            room = room,
-            isPlaying = isPlaying,
-            currentTime = currentTime,
-            onPlayPause = onPlayPause
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        ParticipantsSection(participants = participantsList)
     }
 }
 
@@ -392,10 +286,8 @@ private fun RoomInfoSection(room: MusicRoom) {
 }
 
 @Composable
-private fun MusicPlayerSection(
-    room: MusicRoom,
+private fun PlayerControls(
     isPlaying: Boolean,
-    currentTime: Int,
     onPlayPause: () -> Unit
 ) {
     Card(
@@ -412,55 +304,33 @@ private fun MusicPlayerSection(
                 modifier = Modifier.size(150.dp)
             )
             Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Сейчас играет",
-                style = MaterialTheme.typography.titleMedium
-            )
-            Text(
-                text = room.playlist?.name ?: "Плейлист не выбран",
-                style = MaterialTheme.typography.bodySmall
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "${currentTime / 60}:${"%02d".format(currentTime % 60)}",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            PlayerControls(isPlaying, onPlayPause)
-        }
-    }
-}
-
-@Composable
-private fun PlayerControls(
-    isPlaying: Boolean,
-    onPlayPause: () -> Unit
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(24.dp)
-    ) {
-        IconButton(onClick = { /* Previous track */ }) {
-            Icon(
-                imageVector = Icons.Default.SkipPrevious,
-                contentDescription = "Previous"
-            )
-        }
-        IconButton(
-            onClick = onPlayPause,
-            modifier = Modifier.size(64.dp)
-        ) {
-            Icon(
-                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                contentDescription = "Play/Pause",
-                modifier = Modifier.size(48.dp)
-            )
-        }
-        IconButton(onClick = { /* Next track */ }) {
-            Icon(
-                imageVector = Icons.Default.SkipNext,
-                contentDescription = "Next"
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                IconButton(onClick = { /* Previous track */ }) {
+                    Icon(
+                        imageVector = Icons.Default.SkipPrevious,
+                        contentDescription = "Previous"
+                    )
+                }
+                IconButton(
+                    onClick = onPlayPause,
+                    modifier = Modifier.size(64.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = "Play/Pause",
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
+                IconButton(onClick = { /* Next track */ }) {
+                    Icon(
+                        imageVector = Icons.Default.SkipNext,
+                        contentDescription = "Next"
+                    )
+                }
+            }
         }
     }
 }
@@ -475,7 +345,7 @@ private fun ParticipantsSection(participants: List<String>) {
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.padding(vertical = 8.dp)
     ) {
-        items(participants) { user ->
+        items(items = participants, key = { it }) { user ->
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(
                     imageVector = Icons.Default.AccountCircle,
@@ -523,16 +393,6 @@ fun CreateMusicRoomScreen(
     val selectedPlaylist by viewModel.selectedPlaylist.collectAsState()
     val showPlaylistSelector by viewModel.showPlaylistSelector.collectAsState()
     val context = LocalContext.current
-    val navigateToRoom by viewModel.navigateToRoom.collectAsState()
-
-    LaunchedEffect(navigateToRoom) {
-        navigateToRoom?.let { roomId ->
-            viewModel.onRoomNavigated()
-            navController.navigate("MusicRoom/$roomId") {
-                popUpTo("CreateMusicRoom") { inclusive = true }
-            }
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -603,7 +463,7 @@ fun CreateMusicRoomScreen(
             text = {
                 val playlists by viewModel.spotifyPlaylists.collectAsState()
                 LazyColumn {
-                    items(playlists) { playlist ->
+                    items(items = playlists, key = { it.id }) { playlist ->
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -650,13 +510,8 @@ fun MusicRoomListScreen(
 ) {
     val rooms by viewModel.rooms.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
-    val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
     val context = LocalContext.current
-
-    LaunchedEffect(Unit) {
-        viewModel.clearRooms()
-        viewModel.fetchRooms(forceRefresh = true)
-    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -677,38 +532,28 @@ fun MusicRoomListScreen(
                 modifier = Modifier.weight(1f),
                 singleLine = true
             )
-            IconButton(
-                onClick = { viewModel.clearAllRooms() },
-                modifier = Modifier.padding(start = 8.dp)
-            ) {
-                Icon(Icons.Default.Delete, "Очистить все комнаты")
-            }
         }
 
-        SwipeRefresh(
-            state = rememberSwipeRefreshState(isRefreshing),
-            onRefresh = { viewModel.fetchRooms(forceRefresh = true) },
-            modifier = Modifier.weight(1f)
-        ) {
-            if (rooms.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Нет доступных комнат")
-                }
-            } else {
-                LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    items(
-                        rooms.filter { room ->
-                            room.name.contains(searchQuery, ignoreCase = true) ||
-                                    room.creator.contains(searchQuery, ignoreCase = true) ||
-                                    room.playlist?.name?.contains(searchQuery, ignoreCase = true) ?: false
-                        }
-                    ) { room ->
-                        MusicRoomCard(room = room) {
-                            viewModel.joinMusicRoom(room.id)
-                            navController.navigate("MusicRoom/${room.id}")
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else if (rooms.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Нет доступных комнат")
+            }
+        } else {
+            LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
+                items(items = rooms.filter { room ->
+                    room.name.contains(searchQuery, ignoreCase = true) ||
+                            room.creator.contains(searchQuery, ignoreCase = true) ||
+                            room.playlist?.name?.contains(searchQuery, ignoreCase = true) ?: false
+                }, key = { it.id }) { room ->
+                    MusicRoomCard(room = room) {
+                        viewModel.joinMusicRoom(room.id)
+                        navController.navigate("MusicRoom/${room.id}")
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }
