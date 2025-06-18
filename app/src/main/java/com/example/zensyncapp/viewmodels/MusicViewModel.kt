@@ -33,6 +33,9 @@ class MusicViewModel(application: Application) : BaseRoomViewModel(application) 
     private val _showPlaylistSelector = MutableStateFlow(false)
     val showPlaylistSelector: StateFlow<Boolean> = _showPlaylistSelector
 
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing
+
     var isSpotifyConnected by mutableStateOf(false)
     private val spotifyManager = SpotifyManager(application.applicationContext)
 
@@ -196,6 +199,17 @@ class MusicViewModel(application: Application) : BaseRoomViewModel(application) 
                 _error.value = "Failed to clear rooms: ${e.message}"
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    fun refreshRooms() {
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                fetchRooms(true)
+            } finally {
+                _isRefreshing.value = false
             }
         }
     }

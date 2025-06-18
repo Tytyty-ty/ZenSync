@@ -512,14 +512,8 @@ fun MusicRoomListScreen(
 ) {
     val rooms by viewModel.rooms.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
-    val isLoading by viewModel.isLoading.collectAsState()
-    var isRefreshing by remember { mutableStateOf(false) }
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-
-    LaunchedEffect(Unit) {
-        viewModel.fetchRooms()
-    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -540,24 +534,20 @@ fun MusicRoomListScreen(
                 modifier = Modifier.weight(1f),
                 singleLine = true
             )
+            IconButton(
+                onClick = { viewModel.clearAllRooms() },
+                modifier = Modifier.padding(start = 8.dp)
+            ) {
+            Icon(Icons.Default.Delete, "Очистить все комнаты")
+        }
         }
 
         SwipeRefresh(
             state = rememberSwipeRefreshState(isRefreshing),
-            onRefresh = {
-                coroutineScope.launch {
-                    isRefreshing = true
-                    viewModel.fetchRooms(forceRefresh = true)
-                    isRefreshing = false
-                }
-            },
+            onRefresh = { viewModel.refreshRooms() },
             modifier = Modifier.weight(1f)
         ) {
-            if (isLoading && rooms.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            } else if (rooms.isEmpty()) {
+            if (rooms.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Нет доступных комнат")
                 }

@@ -30,6 +30,9 @@ class MeditationViewModel(application: Application) : BaseRoomViewModel(applicat
     private val _showCompletionDialog = MutableStateFlow(false)
     val showCompletionDialog: StateFlow<Boolean> = _showCompletionDialog
 
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing
+
     init {
         fetchRooms()
     }
@@ -63,21 +66,6 @@ class MeditationViewModel(application: Application) : BaseRoomViewModel(applicat
         }
     }
 
-    fun fetchRooms() {
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                val response = ApiClient.httpClient.get("/api/meditation/rooms")
-                if (response.status == HttpStatusCode.OK) {
-                    _rooms.value = response.body()
-                }
-            } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to fetch rooms"
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
 
     fun createRoom(name: String, duration: Int, goal: String, isPublic: Boolean = true) {
         viewModelScope.launch {
@@ -162,6 +150,17 @@ class MeditationViewModel(application: Application) : BaseRoomViewModel(applicat
                 _isLoading.value = false
             }
 
+        }
+    }
+
+    fun refreshRooms() {
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                fetchRooms(true)
+            } finally {
+                _isRefreshing.value = false
+            }
         }
     }
 
