@@ -23,11 +23,8 @@ fun Route.webSocketRoutes() {
         webSocket("/meditation/{roomId}") {
             val roomId = call.parameters["roomId"] ?: return@webSocket
             val session = this
-
-            // Инициализируем данные комнаты, если их нет
             val roomData = meditationRooms.getOrPut(roomId) {
                 MeditationRoomData().apply {
-                    // Загружаем продолжительность комнаты из базы данных
                     transaction {
                         MeditationRooms.select { MeditationRooms.id eq roomId.toInt() }
                             .singleOrNull()
@@ -43,12 +40,10 @@ fun Route.webSocketRoutes() {
             try {
                 roomData.connections[session.hashCode().toString()] = session
                 roomData.sendInitialState(session)
-
-                // Получаем информацию о пользователе из заголовков
                 val userId = call.request.headers["X-User-Id"]
                 val username = call.request.headers["X-Username"]
 
-                // Добавляем участника и уведомляем всех
+
                 if (userId != null && username != null) {
                     roomData.participants[userId] = username
                     roomData.broadcast("participants:${roomData.participants.values.joinToString(",")}")
@@ -68,7 +63,6 @@ fun Route.webSocketRoutes() {
                                 roomData.sendInitialState(session)
                             }
                             message == "get_participants" -> {
-                                // Отправляем текущий список участников по запросу
                                 session.send(Frame.Text("participants:${roomData.participants.values.joinToString(",")}"))
                             }
                             message.startsWith("duration:") -> {
@@ -92,11 +86,9 @@ fun Route.webSocketRoutes() {
             } catch (e: Exception) {
                 println("WebSocket error: ${e.message}")
             } finally {
-                // При отключении пользователя удаляем его из списка участников
                 val userId = call.request.headers["X-User-Id"]
                 if (userId != null) {
                     roomData.participants.remove(userId)
-                    // Уведомляем остальных участников об обновленном списке
                     roomData.broadcast("participants:${roomData.participants.values.joinToString(",")}")
                 }
 
@@ -119,18 +111,15 @@ fun Route.webSocketRoutes() {
             try {
                 roomData.connections[session.hashCode().toString()] = session
 
-                // Получаем информацию о пользователе из заголовков
                 val userId = call.request.headers["X-User-Id"]
                 val username = call.request.headers["X-Username"]
 
-                // Добавляем участника и уведомляем всех
                 if (userId != null && username != null) {
                     roomData.participants[userId] = username
                     roomData.broadcast("participants:${roomData.participants.values.joinToString(",")}")
                     roomData.broadcast("new_participant:$username")
                 }
 
-                // Отправляем текущий список участников новому подключению
                 session.send(Frame.Text("participants:${roomData.participants.values.joinToString(",")}"))
 
                 incoming.consumeEach { frame ->
@@ -146,7 +135,6 @@ fun Route.webSocketRoutes() {
                                 roomData.broadcast("playback:pause")
                             }
                             message == "get_participants" -> {
-                                // Отправляем текущий список участников по запросу
                                 session.send(Frame.Text("participants:${roomData.participants.values.joinToString(",")}"))
                             }
                         }
@@ -155,11 +143,9 @@ fun Route.webSocketRoutes() {
             } catch (e: Exception) {
                 println("Music WebSocket error: ${e.message}")
             } finally {
-                // При отключении пользователя удаляем его из списка участников
                 val userId = call.request.headers["X-User-Id"]
                 if (userId != null) {
                     roomData.participants.remove(userId)
-                    // Уведомляем остальных участников об обновленном списке
                     roomData.broadcast("participants:${roomData.participants.values.joinToString(",")}")
                 }
 
@@ -179,7 +165,7 @@ class MeditationRoomData {
     var isPlaying: Boolean = false
     var timerJob: Job? = null
     val connections = ConcurrentHashMap<String, WebSocketSession>()
-    val participants = ConcurrentHashMap<String, String>() // userId to username
+    val participants = ConcurrentHashMap<String, String>()
 
     suspend fun broadcast(message: String) {
         connections.values.forEach { session ->
@@ -231,7 +217,7 @@ class MeditationRoomData {
 class MusicRoomData {
     var isPlaying: Boolean = false
     val connections = ConcurrentHashMap<String, WebSocketSession>()
-    val participants = ConcurrentHashMap<String, String>() // userId to username
+    val participants = ConcurrentHashMap<String, String>()
 
     suspend fun broadcast(message: String) {
         connections.values.forEach { session ->
