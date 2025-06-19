@@ -443,7 +443,6 @@ fun MusicRoomListScreen(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // Заменяем кнопку "Назад" на кнопку "Создать комнату"
             IconButton(
                 onClick = { navController.navigate("CreateMusicRoom") },
                 modifier = Modifier.size(48.dp)
