@@ -23,90 +23,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.zensyncapp.models.AuthResponse
 import com.example.zensyncapp.models.MusicRoom
-import com.example.zensyncapp.models.SpotifyPlaylist
 import com.example.zensyncapp.network.WebSocketManager
 import com.example.zensyncapp.viewmodels.MusicViewModel
 import com.google.accompanist.swiperefresh.SwipeRefresh
 import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import kotlinx.coroutines.launch
-
-@Composable
-fun MusicRoomScreen(navController: NavController, viewModel: MusicViewModel = viewModel()) {
-    val rooms by viewModel.rooms.collectAsState()
-    var showCreateDialog by remember { mutableStateOf(false) }
-    val isLoading by viewModel.isLoading.collectAsState()
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                text = "Музыкальные комнаты",
-                style = MaterialTheme.typography.titleLarge
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            IconButton(
-                onClick = { showCreateDialog = true },
-                modifier = Modifier.size(48.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Создать комнату"
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(items = rooms, key = { it.id }) { room ->
-                    MusicRoomCard(
-                        room = room,
-                        onJoin = { navController.navigate("MusicRoom/${room.id}") }
-                    )
-                }
-            }
-        }
-    }
-
-    if (showCreateDialog) {
-        AlertDialog(
-            onDismissRequest = { showCreateDialog = false },
-            title = { Text(text = "Создать новую комнату") },
-            text = { Text(text = "Вы хотите создать новую музыкальную комнату?") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showCreateDialog = false
-                        navController.navigate("CreateMusicRoom")
-                    }
-                ) {
-                    Text(text = "Создать")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showCreateDialog = false }
-                ) {
-                    Text(text = "Отмена")
-                }
-            }
-        )
-    }
-}
 
 @Composable
 fun MusicRoomCard(
@@ -522,10 +443,20 @@ fun MusicRoomListScreen(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            IconButton(onClick = { navController.popBackStack() }) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
+            // Заменяем кнопку "Назад" на кнопку "Создать комнату"
+            IconButton(
+                onClick = { navController.navigate("CreateMusicRoom") },
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Создать комнату",
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
+
             Spacer(modifier = Modifier.width(8.dp))
+
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -534,14 +465,20 @@ fun MusicRoomListScreen(
                 modifier = Modifier.weight(1f),
                 singleLine = true
             )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
             IconButton(
                 onClick = {
                     viewModel.fetchRooms(forceRefresh = true)
                     Toast.makeText(context, "Список обновлен", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.padding(start = 8.dp)
+                }
             ) {
-                Icon(Icons.Default.Refresh, "Обновить список")
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Обновить список",
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
         }
 
@@ -551,11 +488,28 @@ fun MusicRoomListScreen(
             modifier = Modifier.weight(1f)
         ) {
             if (rooms.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Нет доступных комнат")
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text("Нет доступных комнат")
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { navController.navigate("CreateMusicRoom") }
+                        ) {
+                            Text("Создать первую комнату")
+                        }
+                    }
                 }
             } else {
-                LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
+                LazyColumn(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     items(
                         rooms.filter { room ->
                             room.name.contains(searchQuery, ignoreCase = true) ||
@@ -571,7 +525,6 @@ fun MusicRoomListScreen(
                                 navController.navigate("MusicRoom/${room.id}")
                             }
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
             }
