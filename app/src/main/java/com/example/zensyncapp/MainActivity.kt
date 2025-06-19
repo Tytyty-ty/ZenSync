@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
                         CreateMusicRoomScreen(navController, viewModel)
                     }
 
-                    composable("JoinMusicRoom") {
+                    composable("MusicRoomListScreen") {
                         val viewModel: MusicViewModel = viewModel()
                         MusicRoomListScreen(navController, viewModel)
                     }

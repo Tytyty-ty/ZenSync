@@ -216,7 +216,8 @@ class MusicViewModel(application: Application) : BaseRoomViewModel(application) 
 
     fun fetchRooms(forceRefresh: Boolean = false) {
         viewModelScope.launch {
-            _isLoading.value = true
+            _isLoading.value = !forceRefresh
+            _isRefreshing.value = forceRefresh
             try {
                 val response = ApiClient.httpClient.get("/api/music/rooms") {
                     if (forceRefresh) {
@@ -230,6 +231,7 @@ class MusicViewModel(application: Application) : BaseRoomViewModel(application) 
                 _error.value = e.message ?: "Failed to fetch rooms"
             } finally {
                 _isLoading.value = false
+                _isRefreshing.value = false
             }
         }
     }

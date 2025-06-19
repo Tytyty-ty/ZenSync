@@ -133,6 +133,7 @@ fun JoinMeditationRoomScreen(
     val rooms by viewModel.rooms.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val context = LocalContext.current
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -153,11 +154,20 @@ fun JoinMeditationRoomScreen(
                 modifier = Modifier.weight(1f),
                 singleLine = true
             )
+            IconButton(
+                onClick = {
+                    viewModel.fetchRooms(forceRefresh = true)
+                    Toast.makeText(context, "Список обновлен", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.padding(start = 8.dp)
+            ) {
+                Icon(Icons.Default.Refresh, "Обновить список")
+            }
         }
 
         SwipeRefresh(
             state = rememberSwipeRefreshState(isRefreshing),
-            onRefresh = { viewModel.refreshRooms() },
+            onRefresh = { viewModel.fetchRooms(forceRefresh = true) },
             modifier = Modifier.weight(1f)
         ) {
             if (rooms.isEmpty()) {
@@ -170,16 +180,14 @@ fun JoinMeditationRoomScreen(
                         rooms.filter { room ->
                             room.name.contains(searchQuery, ignoreCase = true) ||
                                     room.creator.contains(searchQuery, ignoreCase = true) ||
-                                    room.goal?.contains(searchQuery, ignoreCase = true) ?: false
-                        }
+                                    (room.goal?.contains(searchQuery, ignoreCase = true) ?: false)
+                        },
+                        key = { it.id }
                     ) { room ->
-                        MeditationRoomCard(
-                            room = room,
-                            onClick = {
-                                viewModel.joinRoom(room.id)
-                                navController.navigate("LiveMeditationSession/${room.id}")
-                            }
-                        )
+                        MeditationRoomCard(room = room) {
+                            viewModel.joinRoom(room.id)
+                            navController.navigate("LiveMeditationSession/${room.id}")
+                        }
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                 }

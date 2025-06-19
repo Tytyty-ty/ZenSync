@@ -55,7 +55,7 @@ fun MainHub(navController: NavController) {
         Box(modifier = Modifier.weight(1f)) {
             when (selectedTab) {
                 0 -> MeditationScreen(navController)
-                1 -> MusicRoomScreen(navController)
+                1 -> MusicRoomListScreen(navController)
                 2 -> SettingsScreen()
             }
         }

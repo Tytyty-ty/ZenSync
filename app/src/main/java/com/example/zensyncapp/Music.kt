@@ -508,7 +508,7 @@ fun CreateMusicRoomScreen(
 @Composable
 fun MusicRoomListScreen(
     navController: NavController,
-    viewModel: MusicViewModel
+    viewModel: MusicViewModel = viewModel()
 ) {
     val rooms by viewModel.rooms.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
@@ -535,16 +535,19 @@ fun MusicRoomListScreen(
                 singleLine = true
             )
             IconButton(
-                onClick = { viewModel.clearAllRooms() },
+                onClick = {
+                    viewModel.fetchRooms(forceRefresh = true)
+                    Toast.makeText(context, "Список обновлен", Toast.LENGTH_SHORT).show()
+                },
                 modifier = Modifier.padding(start = 8.dp)
             ) {
-            Icon(Icons.Default.Delete, "Очистить все комнаты")
-        }
+                Icon(Icons.Default.Refresh, "Обновить список")
+            }
         }
 
         SwipeRefresh(
             state = rememberSwipeRefreshState(isRefreshing),
-            onRefresh = { viewModel.refreshRooms() },
+            onRefresh = { viewModel.fetchRooms(forceRefresh = true) },
             modifier = Modifier.weight(1f)
         ) {
             if (rooms.isEmpty()) {
@@ -558,12 +561,16 @@ fun MusicRoomListScreen(
                             room.name.contains(searchQuery, ignoreCase = true) ||
                                     room.creator.contains(searchQuery, ignoreCase = true) ||
                                     room.playlist?.name?.contains(searchQuery, ignoreCase = true) ?: false
-                        }
+                        },
+                        key = { it.id }
                     ) { room ->
-                        MusicRoomCard(room = room) {
-                            viewModel.joinMusicRoom(room.id)
-                            navController.navigate("MusicRoom/${room.id}")
-                        }
+                        MusicRoomCard(
+                            room = room,
+                            onJoin = {
+                                viewModel.joinMusicRoom(room.id)
+                                navController.navigate("MusicRoom/${room.id}")
+                            }
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
