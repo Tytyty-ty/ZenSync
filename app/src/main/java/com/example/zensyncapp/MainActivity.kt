@@ -37,7 +37,6 @@ class MainActivity : ComponentActivity() {
                     composable("RegisterScreen") { RegisterScreen(navController, authViewModel) }
                     composable("MainHub") { MainHub(navController) }
 
-                    // Медитационные комнаты
                     composable("CreateMeditationRoom/{goal}") { backStackEntry ->
                         val goal = backStackEntry.arguments?.getString("goal") ?: ""
                         val viewModel: MeditationViewModel = viewModel()
@@ -83,7 +82,6 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // Музыкальные комнаты
                     composable("CreateMusicRoom") {
                         val viewModel: MusicViewModel = viewModel()
                         RoomNavigationHandler(navController, viewModel)
